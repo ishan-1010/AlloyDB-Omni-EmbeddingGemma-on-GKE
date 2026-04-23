@@ -54,3 +54,5 @@ This kit documents the three fixes, captures real output from an end-to-end run 
 Full reasoning in [docs/TRIAL_ACCOUNT_GUIDE.md](docs/TRIAL_ACCOUNT_GUIDE.md).
 
 ---
+
+<img width="1148" height="1148" alt="qr-code (1)" src="https://github.com/user-attachments/assets/ff3b8d1e-1896-4e4d-b523-6e1422eb1924" />
