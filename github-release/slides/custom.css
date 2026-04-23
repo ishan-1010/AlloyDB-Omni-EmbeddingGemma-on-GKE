@@ -1,0 +1,332 @@
+/* BuildSpace 2.0 × GDG IGDTUW — custom reveal.js theme
+   Design targets:
+   - 16:9 aspect (1280×720) so nothing gets top/bottom-letterboxed on modern projectors
+   - center: false at the Reveal layer; slide itself uses flex column for vertical control
+   - Back-row readable code/terminal font (~31–36px after Reveal scaling)
+   - Dark palette match with live terminal so alt-tabbing mid-demo doesn't strain eyes */
+
+:root {
+  --g-blue:   #4285F4;
+  --g-red:    #EA4335;
+  --g-yellow: #FBBC04;
+  --g-green:  #34A853;
+  --bg:       #0b0d10;
+  --bg-2:     #14171c;
+  --fg:       #e8eaed;
+  --fg-dim:   #9aa0a6;
+  --code-bg:  #1b1f24;
+  --rule:     #2a2f36;
+}
+
+html, body { background: var(--bg); }
+
+.reveal, .reveal .slides {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Inter", "Google Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* KEY FIX: every slide fills the full 720px height, vertical-center by default.
+   This removes the "short slide drifts to middle with huge empty space" problem. */
+.reveal .slides > section,
+.reveal .slides > section.present {
+  height: 100%;
+  min-height: 660px;
+  display: flex !important;
+  flex-direction: column;
+  justify-content: center;
+  text-align: left;
+  padding: 30px 56px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Kicker-topped slides: content flows from top, kicker acts as header */
+.reveal .slides > section:has(.kicker) {
+  justify-content: flex-start;
+  padding-top: 44px;
+}
+
+/* Title slide is an exception — we want the centered "hero" feel */
+.reveal .slides > section.title-slide {
+  justify-content: center;
+  padding-top: 40px;
+}
+
+/* Typography — set in px on .reveal so Reveal's scaling handles device sizing */
+.reveal {
+  font-size: 30px;
+}
+
+.reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+  color: var(--fg);
+  text-transform: none;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+  margin: 0 0 0.35em 0;
+}
+
+.reveal h1 { font-size: 3.0em; line-height: 1.05; }   /* ~90px */
+.reveal h2 { font-size: 1.7em; line-height: 1.15; }   /* ~51px, fits one line */
+.reveal h3 { font-size: 1.15em; color: var(--fg-dim); font-weight: 500; }
+
+.reveal p, .reveal li {
+  font-size: 0.95em;              /* ~28.5px */
+  line-height: 1.45;
+}
+.reveal p { margin: 0.4em 0; }
+
+.reveal ul, .reveal ol {
+  margin-left: 1em;
+  margin-top: 0.2em;
+}
+
+.reveal li {
+  margin-bottom: 0.55em;
+}
+
+/* Kicker — small section label */
+.kicker {
+  display: inline-block;
+  font-size: 0.7em;              /* ~21px */
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--g-blue);
+  margin-bottom: 0.6em;
+}
+
+/* Accent colors on inline text */
+.blue   { color: var(--g-blue);   }
+.red    { color: var(--g-red);    }
+.yellow { color: var(--g-yellow); }
+.green  { color: var(--g-green);  }
+.dim    { color: var(--fg-dim);   }
+
+/* Footer slot */
+.footer {
+  position: absolute;
+  bottom: 18px;
+  left: 40px;
+  font-size: 0.55em;
+  color: var(--fg-dim);
+  letter-spacing: 0.05em;
+}
+
+/* =========================================================
+   Title slide
+   ========================================================= */
+.title-slide {
+  text-align: left;
+}
+.title-slide h1 {
+  font-size: 3.8em;                /* big, poster-style */
+  margin-bottom: 0.25em;
+}
+.title-slide .kicker {
+  color: var(--g-yellow);
+  margin-bottom: 1.5em;
+}
+.title-slide .meta {
+  color: var(--fg-dim);
+  font-size: 0.85em;
+  margin-top: 1.6em;
+  line-height: 1.7;
+}
+.title-slide .gdg-bar {
+  display: inline-flex;
+  gap: 8px;
+  margin-top: 1.2em;
+}
+.title-slide .gdg-bar span {
+  width: 56px; height: 7px; border-radius: 3px;
+}
+.title-slide .gdg-bar .b1 { background: var(--g-blue);   }
+.title-slide .gdg-bar .b2 { background: var(--g-red);    }
+.title-slide .gdg-bar .b3 { background: var(--g-yellow); }
+.title-slide .gdg-bar .b4 { background: var(--g-green);  }
+
+/* =========================================================
+   Code blocks — large enough to read from the back row
+   ========================================================= */
+.reveal pre {
+  width: 100%;
+  margin: 0.5em 0;
+  box-shadow: none;
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+.reveal pre code {
+  padding: 18px 22px;
+  font-family: "JetBrains Mono", "Menlo", ui-monospace, monospace;
+  font-size: 0.7em;
+  line-height: 1.5;
+  max-height: none;
+  color: #d4d7db;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+  overflow: hidden;                /* kill scrollbars on code blocks */
+}
+.reveal pre {
+  overflow: hidden;
+}
+.reveal code:not(pre code) {
+  background: var(--code-bg);
+  color: var(--g-yellow);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: "JetBrains Mono", "Menlo", ui-monospace, monospace;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+}
+
+/* Hero query slide — bigger than normal, still fits with results block below */
+.hero-code pre code {
+  font-size: 0.85em;
+  line-height: 1.55;
+  padding: 22px 28px;
+}
+
+/* =========================================================
+   "Terminal chip" — projector-grade sized
+   ========================================================= */
+.term {
+  background: #050506;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 16px 22px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7em;
+  line-height: 1.4;
+  color: #c8f5c8;
+  white-space: pre;
+  overflow: hidden;                /* no scrollbars on slides */
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+  margin: 0.4em 0;
+}
+.term .prompt { color: var(--g-blue); }
+.term .cmt    { color: var(--fg-dim); }
+
+/* =========================================================
+   Tables
+   ========================================================= */
+.reveal table {
+  font-size: 0.8em;
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  width: 100%;
+}
+.reveal table th, .reveal table td {
+  border: 1px solid var(--rule);
+  padding: 10px 14px;
+  text-align: left;
+  vertical-align: top;
+}
+.reveal table th {
+  background: var(--bg-2);
+  color: var(--fg-dim);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* =========================================================
+   Layout helpers
+   ========================================================= */
+.cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  align-items: start;
+  margin-top: 0.4em;
+}
+.col-head {
+  font-size: 0.75em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  margin-bottom: 0.6em;
+}
+
+.bignum {
+  font-size: 3.4em;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 0.1em;
+}
+.bignum.blue  { color: var(--g-blue);  }
+.bignum.green { color: var(--g-green); }
+
+/* Callouts */
+.callout {
+  border-left: 4px solid var(--g-yellow);
+  background: var(--bg-2);
+  padding: 14px 18px;
+  margin: 0.5em 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 0.95em;
+}
+.callout.blue  { border-color: var(--g-blue);  }
+.callout.green { border-color: var(--g-green); }
+.callout.red   { border-color: var(--g-red);   }
+
+/* Meta row — the small 4-stat strip on the hero-preview slide */
+.meta-row {
+  display: flex;
+  gap: 28px;
+  color: var(--fg-dim);
+  font-size: 0.82em;
+  margin-top: 0.8em;
+  flex-wrap: wrap;
+}
+.meta-row strong { color: var(--fg); font-size: 1.1em; }
+
+/* Section arc dots (unused currently, kept for future) */
+.arc { display: flex; gap: 8px; align-items: center; margin-top: 1em; }
+.arc .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--rule); }
+.arc .dot.active { background: var(--g-blue); }
+.arc .label { font-size: 0.6em; color: var(--fg-dim); margin-left: 6px; }
+
+/* =========================================================
+   Diagram helpers — SVG images should fill width cleanly
+   ========================================================= */
+.diagram {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 8px auto;
+  width: 100%;
+  flex: 1;                         /* absorb remaining vertical space */
+}
+.diagram img {
+  max-width: 100%;
+  max-height: 500px;
+  width: auto;
+  height: auto;
+}
+
+.reveal img {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  margin: 0 auto;
+  display: block;
+}
+
+/* Center utility for optional use */
+.center { text-align: center; }
+
+/* =========================================================
+   Speaker notes visual hierarchy
+   (only affects the reveal notes window, where applicable)
+   ========================================================= */
+.reveal aside.notes p {
+  margin: 0.35em 0;
+  font-size: 18px;
+  line-height: 1.45;
+}
+.reveal aside.notes strong {
+  color: #4285F4;
+  letter-spacing: 0.04em;
+}

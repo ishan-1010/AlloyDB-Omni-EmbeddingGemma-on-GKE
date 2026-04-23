@@ -1,0 +1,18 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: cymbal-pgvector
+    environment:
+      POSTGRES_DB: cymbal
+      POSTGRES_USER: cymbal
+      POSTGRES_PASSWORD: cymbal
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cymbal -d cymbal"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
