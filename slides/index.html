@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>AI-Powered Search, Inside Your Database — BuildSpace 2.0 × GDG IGDTUW</title>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="custom.css">
+</head>
+
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- =========================================================
+     SLIDE 1 — TITLE
+     ========================================================= -->
+<section class="title-slide">
+  <div class="kicker">BuildSpace 2.0 · GDG IGDTUW</div>
+  <h1>AI-Powered Search,<br><span class="blue">Inside Your Database</span></h1>
+  <h3>AlloyDB Omni + EmbeddingGemma on GKE</h3>
+  <div class="gdg-bar">
+    <span class="b1"></span><span class="b2"></span><span class="b3"></span><span class="b4"></span>
+  </div>
+  <div class="meta">
+    <strong>Ishan Katoch</strong><br>
+    25 April 2026 · IGDTUW, Delhi<br>
+    45-minute session
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Hi everyone! Main Ishan."</p>
+    <p><strong>SAY:</strong> "Next 45 minute mein ek cool cheez dekhenge — database ke andar AI."</p>
+    <p><strong>SAY:</strong> "Topic hai semantic search. AlloyDB Omni, GKE, embeddings — naam fancy hain, but idea simple hai: Postgres plus AI."</p>
+    <p><strong>SAY:</strong> "End mein live demo bhi hoga, pre-provisioned cluster pe. Toh actually chalti hui cheez dikhegi."</p>
+    <p><strong>SAY (agenda, 10 sec):</strong> "Flow yeh hai — hook, concepts, architecture, demo, aur where to go next. Last mein Q&amp;A."</p>
+    <p><strong>DO:</strong> Smile, eye contact back row first. Don't read slide.</p>
+    <p><strong>NOTE:</strong> 30 sec intro max. Confidence &gt; content here.</p>
+    <p><strong>TIME:</strong> 0:00 – 0:01</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 2 — THE HOOK
+     ========================================================= -->
+<section>
+  <div class="kicker">The hook</div>
+  <h2>How does this even work?</h2>
+  <div class="cols" style="margin-top: 1.4em;">
+    <div>
+      <div class="col-head">You search for</div>
+      <div class="callout blue" style="font-size: 1.2em; padding: 22px 26px;">
+        "fruit trees that grow well in hot weather"
+      </div>
+    </div>
+    <div>
+      <div class="col-head">You get back</div>
+      <div class="callout green" style="font-size: 1.2em; padding: 22px 26px;">
+        Meyer Lemon Tree · Birch Tree · Boxwood Bush
+      </div>
+    </div>
+  </div>
+  <div class="callout" style="margin-top: 2em; border-left-color: var(--fg-dim);">
+    <p style="margin: 0; font-size: 1.15em;">
+      A keyword <code>LIKE '%fruit tree%'</code> matches <span class="yellow">zero rows</span> — none of these literally contain that phrase.
+    </p>
+    <p style="margin: 0.4em 0 0 0; color: var(--fg-dim); font-size: 1em;">
+      So how did the system know?
+    </p>
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Ek simple example socho."</p>
+    <p><strong>SAY:</strong> "Tumne search kiya — 'fruit trees that grow well in hot weather'. Result aaya: Meyer Lemon Tree, Birch Tree, Boxwood Bush."</p>
+    <p><strong>SAY:</strong> "Ek second ruko. Poori phrase 'fruit trees that grow well' yeh exact words toh kisi result mein hain hi nahi. Toh match kaise hua?"</p>
+    <p><strong>DO:</strong> Pause 10 seconds. Ask: "Kisi ko idea? Hands up."</p>
+    <p><strong>SAY (after responses):</strong> "Haan, AI. But aaj exactly dekhenge — yeh AI database ke andar kaise baithi hai, aur SQL se kaise call hoti hai."</p>
+    <p><strong>NOTE:</strong> Don't rush. The mystery sets up everything.</p>
+    <p><strong>TIME:</strong> 0:01 – 0:02</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 3 — WHAT WE'LL BUILD TODAY
+     ========================================================= -->
+<section>
+  <div class="kicker">What we're building today</div>
+  <h2>Semantic search over a product catalog</h2>
+  <div style="margin: 0.5em 0;">
+    <div class="term"><span class="prompt">cymbal=#</span> SELECT product_name, left(description,28) AS description,
+          sale_price, zip_code, distance FROM ... LIMIT 5;
+
+     product_name      | description                  | sale_price | zip_code | distance
+-----------------------+------------------------------+------------+----------+----------
+ Cherry Tree           | This is a beautiful cherry…  |      75.00 |    93230 |  0.52105
+ California Lilac      | This is a beautiful lilac…   |       5.00 |    93230 |  0.56394
+ Toyon                 | This is a beautiful toyon…   |      10.00 |    93230 |  0.56700
+ Rose Bush             | This is a beautiful rose…    |      50.00 |    93230 |  0.57315
+ California Peppertree | This is a beautiful pepper…  |      25.00 |    93230 |  0.57509
+<span class="cmt">Time: 20487 ms  (ZIP 93230 = Hanford, California)</span></div>
+  </div>
+  <div class="meta-row">
+    <div><strong>941</strong> <span class="dim">products</span></div>
+    <div><strong>768-dim</strong> <span class="dim">vectors</span></div>
+    <div><strong>20.5 s</strong> <span class="dim">query</span></div>
+    <div><strong>0 external API calls</strong></div>
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Yeh end-state hai. Aur yeh fake screenshot nahi hai — yeh aaj subah ke dry run ka <em>real</em> output hai, isi cluster ka jo abhi live chal raha hai."</p>
+    <p><strong>SAY:</strong> "Query thi 'what kind of fruit trees grow well here?' Store ID 1583 par filter kiya. Top result — Cherry Tree. Notice karo: 'cherry' word query mein tha hi nahi. Model ne semantic match kiya."</p>
+    <p><strong>SAY:</strong> "ZIP 93230 Hanford, California hai — Central Valley. Cymbal dataset US retail hai, 941 products."</p>
+    <p><strong>SAY:</strong> "Koi OpenAI API nahi, koi Vertex endpoint nahi. Sab cluster ke andar. Per-query external cost zero."</p>
+    <p><strong>DO:</strong> Point at the "20.5 s" stat — then say: "Yeh latency suspicious lag rahi hai na? Slide 19 pe dekhenge kyun — embedding generate karna bottleneck hai, vector search nahi."</p>
+    <p><strong>NOTE:</strong> Set expectation — this IS the live output. Honest about the latency; the teardown is the teaching moment.</p>
+    <p><strong>TIME:</strong> 0:02 – 0:03</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 4 — KEYWORD SEARCH IS DUMB
+     ========================================================= -->
+<section>
+  <div class="kicker">Concepts · 1 / 6</div>
+  <h2>Keyword search has a ceiling</h2>
+  <div class="cols">
+    <div>
+      <div class="col-head">What SQL gives you</div>
+<pre><code class="language-sql" data-trim>
+SELECT * FROM products
+WHERE description ILIKE '%fruit tree%';
+</code></pre>
+      <p class="dim">Matches <em>literal text</em>. Zero rows if nobody wrote "fruit tree".</p>
+    </div>
+    <div>
+      <div class="col-head">What users actually want</div>
+      <ul>
+        <li>"something for my patio that won't die"</li>
+        <li>"citrus tree for my backyard"</li>
+        <li>"low-maintenance outdoor plant"</li>
+      </ul>
+      <p class="dim">None of these share words with your product names.</p>
+    </div>
+  </div>
+  <div class="callout yellow" style="margin-top: 0.9em;">
+    We need a way to match on <strong>meaning</strong>, not letters.
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "SQL LIKE sab ne database course mein likha hai. Syntax familiar hai."</p>
+    <p><strong>SAY:</strong> "Problem kya hai LIKE ke saath? Yeh sirf literal text match karta hai — user ka intent nahi samajhta."</p>
+    <p><strong>SAY:</strong> "User likhe 'citrus tree' — but database mein product name hai 'Meyer Lemon'. LIKE fail. Zero rows. Meaning same hai, words alag."</p>
+    <p><strong>SAY:</strong> "Real-life example: Swiggy pe 'chinese' search karo aur 'Hakka noodles' nahi dikhe — app bekaar lagti hai. Same exact problem."</p>
+    <p><strong>DO:</strong> Fast slide, 60 seconds max. Familiar ground.</p>
+    <p><strong>TIME:</strong> 0:03 – 0:04</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 5 — EMBEDDINGS
+     ========================================================= -->
+<section>
+  <div class="kicker">Concepts · 2 / 6</div>
+  <h2>Embeddings: meaning becomes geometry</h2>
+  <div class="diagram">
+    <img src="assets/embeddings-scatter.svg" alt="Embeddings scatter" style="max-height: 360px;">
+  </div>
+  <p class="dim center" style="margin-top: 0.4em;">
+    A model reads text and places it as a <strong class="blue">point in space</strong>. Similar meanings → nearby points.
+  </p>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Solution simple hai — har word ko ek location do."</p>
+    <p><strong>SAY:</strong> "Analogy socho — Delhi Metro ka map. Rajiv Chowk aur Patel Chowk paas-paas hain, Dwarka door hai. Har station ki ek location hai, aur similar stations geographically close hain."</p>
+    <p><strong>SAY:</strong> "Embeddings mein bhi waisa hi — har text ek 'point' ban jaata hai. Similar meaning → paas-paas. Dissimilar → door."</p>
+    <p><strong>SAY:</strong> "Ek farq hai — humara metro map 2D hai. Embedding space 768 dimensions ka hai. Imagine nahi ho sakta, but math exactly same hai."</p>
+    <p><strong>DO:</strong> Point at the two "apple" positions on screen. Mention context disambiguates.</p>
+    <p><strong>NOTE:</strong> Core concept — go slow, use the metro analogy. 2 min on this slide is fine.</p>
+    <p><strong>TIME:</strong> 0:04 – 0:06</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 6 — HOW A MODEL MAKES ONE
+     ========================================================= -->
+<section>
+  <div class="kicker">Concepts · 3 / 6</div>
+  <h2>How is a vector actually made?</h2>
+  <div style="display: flex; gap: 20px; align-items: center; justify-content: center; margin: 30px 0;">
+    <div class="callout" style="flex: 1;">
+      <strong>Input</strong><br>
+      <span class="dim">"fruit trees for hot weather"</span>
+    </div>
+    <div style="font-size: 1.6em; color: var(--fg-dim);">→</div>
+    <div class="callout blue" style="flex: 1.2;">
+      <strong>Embedding model</strong><br>
+      <span class="dim">EmbeddingGemma · 308M params</span><br>
+      <span class="dim">transformer under the hood</span>
+    </div>
+    <div style="font-size: 1.6em; color: var(--fg-dim);">→</div>
+    <div class="callout green" style="flex: 1;">
+      <strong>768 floats</strong><br>
+      <span class="dim">[0.12, -0.08, 0.44, ...]</span>
+    </div>
+  </div>
+  <ul>
+    <li><strong class="blue">EmbeddingGemma</strong> — Google's 308M param open embedding model</li>
+    <li>Runs locally, no API key, no per-call cost, data never leaves the cluster</li>
+    <li>Abstraction-of-the-day: treat it like <code>f(text) → vector</code>. Don't worry about attention heads today.</li>
+  </ul>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Model kaise banata hai yeh vector? Short answer — worry mat karo."</p>
+    <p><strong>SAY:</strong> "Model ek black box function hai. Text daalo, 768 numbers niklenge. Bas."</p>
+    <p><strong>SAY:</strong> "Hum use karenge EmbeddingGemma — Google ka open-source model, 308 million parameters. Context ke liye — ChatGPT ka original 175 BILLION tha. Gemma chota hai, specialized hai embedding ke liye. 8 GB RAM pe bhi chal jaata hai."</p>
+    <p><strong>SAY:</strong> "Koi API key nahi, koi internet nahi chahiye. Cluster ke andar run hota hai."</p>
+    <p><strong>NOTE:</strong> Don't go into transformer internals. Pure abstraction talk.</p>
+    <p><strong>TIME:</strong> 0:06 – 0:08</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 7 — SIMILARITY = DISTANCE
+     ========================================================= -->
+<section>
+  <div class="kicker">Concepts · 4 / 6</div>
+  <h2>Similarity is just distance</h2>
+  <div class="cols">
+    <div>
+      <div class="col-head">Cosine distance</div>
+<pre><code class="language-python" data-trim>
+def cosine_dist(a, b):
+    return 1 - dot(a, b) / (norm(a) * norm(b))
+</code></pre>
+      <p class="dim">Close to 0 = very similar. Close to 1 = unrelated.</p>
+    </div>
+    <div>
+      <div class="col-head">In Postgres / AlloyDB</div>
+<pre><code class="language-sql" data-trim>
+-- cosine distance operator
+SELECT description
+FROM cymbal_products
+ORDER BY embedding &lt;-&gt; query_vector
+LIMIT 5;
+</code></pre>
+      <p class="dim">The <code>&lt;-&gt;</code> operator is from the <code>vector</code> type.</p>
+    </div>
+  </div>
+  <div class="callout green" style="margin-top: 0.8em;">
+    Sorting by similarity = sorting by distance. That's the whole trick.
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Ab ek sawaal — do vectors kitne similar hain, kaise calculate karein?"</p>
+    <p><strong>SAY:</strong> "Answer — distance dekho. Close distance = similar. Far distance = different."</p>
+    <p><strong>SAY:</strong> "Formula hai cosine distance. Dot product divided by magnitudes. First year ka linear algebra — worry mat karo."</p>
+    <p><strong>SAY:</strong> "Asli magic yeh operator hai — angle bracket, dash, angle bracket. Postgres mein pgvector extension ne add kiya. AlloyDB Omni ne isko ScaNN se power diya — matlab 1 million vectors pe bhi fast chalega."</p>
+    <p><strong>SAY:</strong> "Linear algebra ki details samajhne ki zaroorat nahi — bas operator use karna aana chahiye."</p>
+    <p><strong>DO:</strong> Point at <code>&lt;-&gt;</code> in the SQL on screen.</p>
+    <p><strong>TIME:</strong> 0:08 – 0:10</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 8 — WHERE DO YOU STORE THESE?
+     ========================================================= -->
+<section>
+  <div class="kicker">Concepts · 5 / 6</div>
+  <h2>Where do you store these vectors?</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 30%;">Choice</th>
+        <th style="width: 35%;">What it is</th>
+        <th style="width: 35%;">Vibe</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong class="red">Pinecone / Weaviate</strong></td>
+        <td>Dedicated vector DBs (SaaS or self-hosted)</td>
+        <td>Purpose-built, but separate system from your relational data</td>
+      </tr>
+      <tr>
+        <td><strong class="blue">pgvector</strong></td>
+        <td>Postgres extension — adds a <code>vector</code> type</td>
+        <td>"Just Postgres." Simplest starting point.</td>
+      </tr>
+      <tr>
+        <td><strong class="green">AlloyDB Omni</strong></td>
+        <td>Postgres-compatible + <code>ScaNN</code> index + <code>google_ml</code> functions</td>
+        <td>Postgres ergonomics, hyperscaler-grade vector performance</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="dim" style="margin-top: 0.8em;">
+    Today we'll use AlloyDB Omni — but pgvector is a perfectly fine first stop.
+  </p>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Vectors store karne ke liye teen main options hain market mein."</p>
+    <p><strong>SAY:</strong> "Pinecone, Weaviate — dedicated vector databases. SaaS model. Alag system hai relational data se."</p>
+    <p><strong>SAY:</strong> "pgvector — Postgres ka extension. Ek SQL command se add ho jaata hai. Sabse simple."</p>
+    <p><strong>SAY:</strong> "AlloyDB Omni — Postgres-compatible, plus ScaNN index, plus Google ke ML functions. Advanced level."</p>
+    <p><strong>SAY (honest advice):</strong> "Main honestly bolunga — side project ke liye pgvector se shuru karo. Supabase ke free tier mein mil jaata hai. AlloyDB Omni tab dekho jab scale hit kare."</p>
+    <p><strong>NOTE:</strong> Honesty builds credibility. Don't oversell AlloyDB Omni.</p>
+    <p><strong>TIME:</strong> 0:10 – 0:12</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 9 — WHY VECTORS IN YOUR DB WINS
+     ========================================================= -->
+<section>
+  <div class="kicker">Concepts · 6 / 6</div>
+  <h2>Why "vectors inside Postgres" is a big deal</h2>
+  <ul>
+    <li><strong class="blue">One source of truth</strong> — no syncing product data between Postgres and a vector DB</li>
+    <li><strong class="blue">Joins just work</strong> — filter by <code>price &lt; 1000</code> <em>and</em> semantic relevance in one SQL</li>
+    <li><strong class="blue">Transactions</strong> — embedding updates are ACID with the rest of your data</li>
+    <li><strong class="blue">No glue code</strong> — no Python service standing between your app and search</li>
+  </ul>
+  <div class="callout blue" style="margin-top: 0.8em;">
+    The alternative is a "sync nightmare": product updated in Postgres, vector stale in Pinecone.
+    Been there — it's not fun.
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Ab specifically — Postgres ke andar vectors rakhne ka bada fayda kya hai?"</p>
+    <p><strong>SAY:</strong> "Pehla — one source of truth. Product details aur vectors same database mein. Koi sync ka tension nahi."</p>
+    <p><strong>SAY:</strong> "Dusra — joins seamlessly work karte hain. 'Price 1000 se kam' plus 'semantic match' — dono ek hi SQL mein."</p>
+    <p><strong>SAY:</strong> "Teesra — transactions atomic hain. Pinecone use karoge toh Postgres update hua, Pinecone nahi — sync nightmare."</p>
+    <p><strong>SAY:</strong> "Real project mein maine ye pain face kiya hai. Vector DB aur main DB ke beech sync — not fun at all."</p>
+    <p><strong>NOTE:</strong> Personal anecdote lands well. If time low, skip to 60 sec max.</p>
+    <p><strong>TIME:</strong> 0:12 – 0:14</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 10 — ARCHITECTURE DIAGRAM
+     ========================================================= -->
+<section>
+  <div class="kicker">The stack · 1 / 5</div>
+  <h2>What we're actually running</h2>
+  <div class="diagram">
+    <img src="assets/architecture.svg" alt="Architecture diagram" style="max-width: 100%;">
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Ab actual system dekhte hain. Left se right chalte hain."</p>
+    <p><strong>SAY:</strong> "Tum apne laptop se Cloud Shell kholte ho — browser mein terminal. Wahan se <code>kubectl exec</code> karke seedha AlloyDB pod ke andar psql chala lete ho. Diagram mein jump-box VM dikh raha hai — woh codelab ka production pattern hai; aaj simplified rakha hai, fewer moving parts."</p>
+    <p><strong>SAY (if "jump-box kyun?" asked):</strong> "AlloyDB pod ka sirf internal IP hai — security ke liye private. Jump-box ek approved doorway hota hai production mein. Workshop mein hum usi ka shortcut le rahe hain through kubectl."</p>
+    <p><strong>SAY:</strong> "Cluster ke andar do main pods hain. AlloyDB Omni — hamara Postgres plus vector support. TEI pod — EmbeddingGemma 300m chala raha hai."</p>
+    <p><strong>SAY:</strong> "AlloyDB apne aap TEI ko HTTP pe call karta hai jab SQL mein <code>google_ml.embedding()</code> chalta hai. Do pods apas mein cluster-internal DNS se baat karte hain."</p>
+    <p><strong>SAY:</strong> "GCS sirf initial data load ke liye — 941 products ka seed CSV. Baaki time irrelevant."</p>
+    <p><strong>SAY:</strong> "Operator — side mein robot DBA. DBCluster CR dekh ke cluster healthy rakhta hai."</p>
+    <p><strong>DO:</strong> Point at each piece with laser pointer or cursor. Take 90 seconds minimum.</p>
+    <p><strong>NOTE:</strong> This is THE most important slide. Don't rush.</p>
+    <p><strong>TIME:</strong> 0:14 – 0:16</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 11 — ALLOYDB OMNI
+     ========================================================= -->
+<section>
+  <div class="kicker">The stack · 2 / 5</div>
+  <h2>AlloyDB Omni, in one slide</h2>
+  <ul>
+    <li><strong class="blue">PostgreSQL-compatible</strong> — your <code>psql</code>, your drivers, your SQL. Just works.</li>
+    <li><strong class="blue">Runs anywhere</strong> — GKE, any K8s, VMs, your laptop via Docker.</li>
+    <li><strong class="green">+ ScaNN vector index</strong> — Google's research-grade approximate-NN index</li>
+    <li><strong class="green">+ Columnar accelerator</strong> — analytics queries faster than stock Postgres</li>
+    <li><strong class="green">+ <code>google_ml.*</code> functions</strong> — call embedding models from inside SQL</li>
+  </ul>
+  <div class="callout yellow" style="margin-top: 0.8em;">
+    <strong>Mental model:</strong> Omni = "bring-your-own-hardware" AlloyDB. Same engine,
+    you run it. Free for dev/testing.
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "AlloyDB Omni — simple mental model: 'bring your own hardware' wala AlloyDB."</p>
+    <p><strong>SAY:</strong> "Managed AlloyDB GCP-only hai, Google run karta hai, per-hour bill. Omni — same engine, tum run karte ho. Docker, K8s, laptop — anywhere."</p>
+    <p><strong>SAY:</strong> "Iske upar teen extras hain: ScaNN vector index, columnar engine for analytics, aur google_ml functions jo SQL se ML models call karte hain."</p>
+    <p><strong>SAY:</strong> "Free hai dev aur testing ke liye. Paid only production scale pe."</p>
+    <p><strong>SAY (if asked about ScaNN):</strong> "Scalable Nearest Neighbours — Google Research ka. HNSW, IVFFlat ka alternative. Thoda approximate, but massively faster at scale."</p>
+    <p><strong>NOTE:</strong> 60 sec max. If someone asks "why run it myself?" — answer: portability + free dev.</p>
+    <p><strong>TIME:</strong> 0:16 – 0:17</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 12 — KUBERNETES OPERATORS
+     ========================================================= -->
+<section>
+  <div class="kicker">The stack · 3 / 5</div>
+  <h2>Kubernetes Operators, one paragraph</h2>
+  <div class="cols">
+    <div>
+      <p>An <strong class="yellow">Operator</strong> is a robot DBA that lives inside your cluster.</p>
+      <ul>
+        <li>You write a tiny YAML that says "I want a DB cluster like <em>this</em>".</li>
+        <li>The Operator watches that spec.</li>
+        <li>Spawns pods, configures backups, handles failover, keeps reality = spec.</li>
+      </ul>
+      <p class="dim">The AlloyDB Omni operator is how we avoid writing 400 lines of K8s manifests.</p>
+    </div>
+    <div>
+<pre><code class="language-yaml" data-trim>
+apiVersion: alloydbomni.dbadmin
+          .goog/v1
+kind: DBCluster
+metadata:
+  name: cymbal-db
+spec:
+  databaseVersion: "15.7"
+  primarySpec:
+    resources:
+      cpu: "2"
+      memoryMB: 8192
+</code></pre>
+    </div>
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Operator ek word mein — cluster ke andar ka robot DBA."</p>
+    <p><strong>SAY (analogy):</strong> "Zomato pe order ka example. Tumne '2 butter chicken' bola. Backend kya karta hai? Restaurant ko batata hai, delivery partner assign karta hai, tracking update karta hai, tumhe notify karta hai. Tumne sirf intent bola, system ne execute kiya."</p>
+    <p><strong>SAY:</strong> "Operator waisa hi hai database ke liye. YAML mein likho 'mujhe 2 CPU, 8 GB memory ka DB chahiye' — Operator execute karta hai."</p>
+    <p><strong>DO:</strong> Strictly 60 seconds. K8s khud ek semester ka topic hai.</p>
+    <p><strong>NOTE:</strong> If anyone asks "Operator kaise likhte hain?" → "Go language mein, Kubebuilder framework. Aaj ke scope mein nahi hai, codelab link mein examples hain."</p>
+    <p><strong>TIME:</strong> 0:17 – 0:18</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 13 — EMBEDDINGGEMMA + TEI
+     ========================================================= -->
+<section>
+  <div class="kicker">The stack · 4 / 5</div>
+  <h2>EmbeddingGemma, served by TEI</h2>
+  <div class="cols">
+    <div>
+      <div class="col-head">The model</div>
+      <ul>
+        <li><strong>EmbeddingGemma</strong> — Google's open embedding model</li>
+        <li>308M parameters · 768-dim output</li>
+        <li>2K token context · multilingual</li>
+        <li>Hugging Face hosted, Apache 2.0</li>
+      </ul>
+    </div>
+    <div>
+      <div class="col-head">The server</div>
+      <ul>
+        <li><strong>TEI</strong> — Text Embeddings Inference (by Hugging Face)</li>
+        <li>Runs the model as an HTTP service</li>
+        <li>One container image, one pod in GKE</li>
+        <li>AlloyDB Omni calls it via internal cluster DNS</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout green" style="margin-top: 0.9em;">
+    <strong>Why local, not Vertex AI Embeddings API?</strong>
+    No quota · no per-call bill · no data leaves your cluster · privacy by default.
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Model deploy karne ke liye TEI use kar rahe hain — Text Embeddings Inference. HuggingFace ka, Rust mein likha hai, tez hai."</p>
+    <p><strong>SAY:</strong> "Ek container image, ek pod. AlloyDB call karta hai cluster-internal DNS se — <code>http://tei-service.default.svc.cluster.local/embed</code> on port 80."</p>
+    <p><strong>SAY:</strong> "Ab important sawaal — Vertex AI ka embedding API use karna simpler nahi hota? Yes, simpler. But teen cons hain."</p>
+    <p><strong>SAY:</strong> "Ek — quota limit. Dusra — per-call billing. Teesra — data cluster se bahar jaata hai."</p>
+    <p><strong>SAY:</strong> "Student projects mein compliance, privacy, aur cost — teeno matter karte hain. Self-host wins mostly."</p>
+    <p><strong>NOTE:</strong> "Paisa nahi hai" wala question aaye toh this is the answer.</p>
+    <p><strong>TIME:</strong> 0:18 – 0:20</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 14 — THE REQUEST FLOW
+     ========================================================= -->
+<section>
+  <div class="kicker">The stack · 5 / 5</div>
+  <h2>The request flow</h2>
+  <div class="diagram">
+    <img src="assets/request-flow.svg" alt="Request flow" style="max-width: 100%;">
+  </div>
+  <p class="dim center" style="margin-top: 0.4em;">
+    One SQL statement triggers all five steps. No Python middleware. No extra service.
+  </p>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Last concept slide. Jo abhi demo mein dikhega — yeh woh exact flow hai."</p>
+    <p><strong>SAY:</strong> "User query aata hai. SQL se <code>google_ml.embedding</code> call hota hai. TEI pod 768 numbers return karta hai."</p>
+    <p><strong>SAY:</strong> "Fir <code>ORDER BY</code> distance. pgvector <code>&lt;=&gt;</code> operator top-5 lata hai. Aaj 941 rows hain, bina index bhi seq-scan execution 6.6 ms mein complete hota hai. Diagram mein ScaNN index dikh raha hai — woh 10 million+ rows pe production pattern hai; same SQL, bas <code>CREATE INDEX</code>."</p>
+    <p><strong>SAY:</strong> "Poora flow ek SQL statement mein. No Python middleware. No glue code."</p>
+    <p><strong>DO:</strong> Now close slides, switch to terminal on the projector. Say: "Ab slides band. Terminal khol rahe hain. Live demo."</p>
+    <p><strong>NOTE:</strong> 22-min mark. If behind schedule, skip slide 9 next time — demo is fixed.</p>
+    <p><strong>TIME:</strong> 0:20 – 0:22</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 15 — DEMO 1 : CLUSTER RUNNING
+     ========================================================= -->
+<section>
+  <div class="kicker">Live demo · 1 / 5</div>
+  <h2>The cluster is already running</h2>
+  <div class="term"><span class="prompt">$</span> kubectl get pods -A
+
+NAMESPACE             NAME                                      READY   AGE
+alloydb-omni-system   fleet-controller-manager-5dfddcb47d-rf2pb 1/1     9h
+alloydb-omni-system   local-controller-manager-68c585cdf5-vt8dj 1/1     9h
+cert-manager          cert-manager-6dd9bdbd89-mn865             1/1     9h
+default               al-9fe0-my-omni-0                         3/3     9h
+default               tei-deployment-7b87597786-w5ghg           1/1     9h</div>
+  <p class="dim" style="margin-top: 0.9em;">
+    Two pods that matter in <code>default</code>: AlloyDB Omni (the DB) and TEI (the embedding server). Operator + cert-manager sit in their own namespaces.
+  </p>
+  <aside class="notes">
+    <p><strong>DO:</strong> Switch to terminal tab on projector. Run: <code>kubectl get pods -A</code></p>
+    <p><strong>SAY:</strong> "Cluster pre-provisioned hai. <code>default</code> namespace mein do main pods — AlloyDB Omni aur TEI. Dono green."</p>
+    <p><strong>SAY:</strong> "Operator apna namespace <code>alloydb-omni-system</code> mein hai, cert-manager bhi alag. Yeh infra-level hai — direct interaction nahi karoge."</p>
+    <p><strong>SAY:</strong> "Codelab mein tumhe yeh sab Step 3-4 mein khud create karna padta hai — 20-25 min lag sakte hain. 45-min session mein hum skip karke pre-provisioned use kar rahe hain."</p>
+    <p><strong>SAY (honest):</strong> "Production mein tum Helm plus Operator se deploy karte ho. Process link mein hai."</p>
+    <p><strong>NOTE:</strong> 30 seconds max. Just show green and move on.</p>
+    <p><strong>TIME:</strong> 0:22 – 0:23</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 16 — DEMO 2 : THE DATA
+     ========================================================= -->
+<section>
+  <div class="kicker">Live demo · 2 / 5</div>
+  <h2>It's still just Postgres</h2>
+  <div class="term"><span class="prompt">cymbal=#</span> SELECT count(*), round(avg(sale_price)::numeric, 2) AS avg_price
+                FROM cymbal_products;
+
+ count | avg_price
+-------+-----------
+   941 |     84.72
+
+<span class="prompt">cymbal=#</span> SELECT uniq_id, product_name, sale_price
+                FROM cymbal_products LIMIT 1;
+
+     uniq_id      |     product_name      | sale_price
+------------------+-----------------------+------------
+ a73d5f754f225ecb | Laundry Tub Strainer  |      11.74</div>
+  <p class="dim" style="margin-top: 0.9em;">
+    <code>count</code>, <code>avg</code>, regular columns. Nothing AI yet.
+  </p>
+  <aside class="notes">
+    <p><strong>DO:</strong> Switch to psql tab. Run <code>SELECT count(*), round(avg(sale_price)::numeric, 2) FROM cymbal_products;</code></p>
+    <p><strong>SAY:</strong> "Database mein data dekhte hain. 941 products, average price 85 dollars — yeh US retail catalog hai, Cymbal store ka data."</p>
+    <p><strong>DO:</strong> Run <code>SELECT uniq_id, product_name, sale_price FROM cymbal_products LIMIT 1;</code></p>
+    <p><strong>SAY:</strong> "Yahan tak sab kuch plain Postgres hai. <code>count</code>, <code>avg</code>, regular columns. Sab familiar."</p>
+    <p><strong>SAY:</strong> "Tumhara koi bhi database course yeh sab cover karta hai. AI abhi nahi aayi picture mein."</p>
+    <p><strong>NOTE:</strong> Calming moment. "AlloyDB Omni" scary naam lagta hai — yeh slide dikhata hai ki familiar ground hai. 45 sec total.</p>
+    <p><strong>TIME:</strong> 0:23 – 0:24</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 17 — DEMO 3 : GENERATE AN EMBEDDING
+     ========================================================= -->
+<section>
+  <div class="kicker">Live demo · 3 / 5</div>
+  <h2>Generate an embedding from SQL</h2>
+  <div class="term"><span class="prompt">cymbal=#</span> SELECT uniq_id, left(embedding::text, 150) AS first_150_chars
+ FROM cymbal_embedding LIMIT 1;
+
+ uniq_id         | 72380122311d120f193f601da1b5f244
+ first_150_chars | [-0.08797259,-0.011677752,0.026522823,0.013631803,-0.021470953,
+                 |  0.056472335,0.0024991436,-0.0053109853,0.052568424,-0.013035465,
+                 |  0.031414583,-0.04357048...
+<span class="cmt">-- 768 floats total · generated at write-time by TEI + EmbeddingGemma-300m</span></div>
+  <p class="dim" style="margin-top: 0.9em;">
+    A 300M-parameter model ran <em>from inside a SQL statement</em>. Numbers above are real — captured from row 1 of our dry-run dataset.
+  </p>
+  <aside class="notes">
+    <p><strong>DO:</strong> Run <code>SELECT uniq_id, left(embedding::text, 150) FROM cymbal_embedding LIMIT 1;</code></p>
+    <p><strong>SAY (slowly, dramatic):</strong> "Yeh ek real embedding hai — hamare dry run me generate hua, Cymbal products ka pehla row."</p>
+    <p><strong>SAY:</strong> "uniq_id 72380122... yeh Cymbal catalog ka pehla product hai. Embedding column me ek array hai — 768 floats. Screen pe sirf pehle 12 dikh rahe hain."</p>
+    <p><strong>SAY:</strong> "Important cheez — yeh embedding write-time pe bani thi. Jab humne data load kiya, TEI pod ne har description ko embed kiya aur table mein likh diya. Query time pe ise bas padha jaa raha hai."</p>
+    <p><strong>SAY:</strong> "No Python. No fetch. No middleware. Database ne khud TEI pod se baat ki aur 768 numbers return kar diye."</p>
+    <p><strong>DO:</strong> Pause 5 seconds. Let it sink in.</p>
+    <p><strong>NOTE:</strong> Big "aha" moment before the hero. Typical ML stack: Python app + embedding API + DB = 3 hops. Yahan DB hi sab kuch kar raha hai.</p>
+    <p><strong>TIME:</strong> 0:24 – 0:27</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 18 — THE HERO QUERY
+     ========================================================= -->
+<section class="hero-code">
+  <div class="kicker" style="color: var(--g-yellow);">Live demo · 4 / 5 · THE HERO QUERY</div>
+  <h2>Semantic search, end-to-end</h2>
+<pre style="font-size: 0.62em;"><code class="language-sql" data-trim>
+SELECT cp.product_name, cp.sale_price, cs.zip_code,
+       (ce.embedding &lt;=&gt; google_ml.embedding('embeddinggemma',
+           'What kind of fruit trees grow well here?')::vector) AS distance
+FROM cymbal_products cp
+JOIN cymbal_embedding ce ON ce.uniq_id = cp.uniq_id
+JOIN cymbal_inventory ci ON ci.uniq_id = cp.uniq_id
+JOIN cymbal_stores    cs ON cs.store_id = ci.store_id
+ AND ci.inventory &gt; 0 AND cs.store_id = 1583
+ORDER BY distance ASC LIMIT 5;
+</code></pre>
+  <div class="term" style="margin-top: 0.3em; font-size: 0.62em; line-height: 1.35;">     product_name      | sale_price | zip_code | distance
+-----------------------+------------+----------+----------
+ Cherry Tree           |      75.00 |    93230 |  0.52105
+ California Lilac      |       5.00 |    93230 |  0.56394
+ Toyon                 |      10.00 |    93230 |  0.56700
+ Rose Bush             |      50.00 |    93230 |  0.57315
+ California Peppertree |      25.00 |    93230 |  0.57509
+<span class="cmt">Time: 20.5 s  ·  941 products ranked by cosine distance</span></div>
+  <aside class="notes">
+    <p><strong>DO:</strong> Run the hero query slowly. <code>\timing on</code> already enabled.</p>
+    <p><strong>DO:</strong> Pause 10 full seconds after results appear. Silence is fine. Let them read.</p>
+    <p><strong>SAY (after pause, slightly dramatic):</strong> "941 products mein se, store 1583 ke inventory ke andar, top 5 nikale meaning ke basis pe."</p>
+    <p><strong>SAY (the key observation):</strong> "Ruko. Top result kya hai? <em>Cherry Tree</em>. Maine 'cherry' likha hi nahi query mein — likha tha 'what kind of fruit trees grow well here'. Model ne semantically connect kiya: fruit tree = cherry tree. Yeh hai embedding similarity."</p>
+    <p><strong>SAY (distance intuition):</strong> "Distance 0.52 hai — yeh cosine distance hai. 0 matlab exactly same vector. 1 matlab bilkul unrelated. 0.52 matlab 'moderately similar' — which is what we'd expect for a semantic (not literal) match."</p>
+    <p><strong>SAY (callback to slide 2):</strong> "Yaad hai shuruaat mein maine pucha tha — 'fruit tree' likhne pe Meyer Lemon / Birch kaise match hote. Yeh hai answer — same mechanism, real data."</p>
+    <p><strong>SAY (the honest bit, setting up next slide):</strong> "Time dekho — 20.5 seconds. Suspicious? Haan. Next slide pe break karenge kahan gaya time."</p>
+    <p><strong>NOTE:</strong> THE hero moment. Don't fill silence with words. Let the results speak.</p>
+    <p><strong>TIME:</strong> 0:27 – 0:32</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 19 — SEMANTIC GENERALITY (the "patio" query)  [NEW]
+     ========================================================= -->
+<section>
+  <div class="kicker">Live demo · bonus</div>
+  <h2>Semantic search isn't a trick.</h2>
+  <p class="dim" style="margin-top: -0.4em;">
+    Same <code>&lt;=&gt;</code> operator. Totally different intent. Same magic.
+  </p>
+<pre style="font-size: 0.65em;"><code class="language-sql" data-trim>
+SELECT cp.product_name, cp.sale_price,
+       (ce.embedding &lt;=&gt; google_ml.embedding('embeddinggemma',
+           'something cheap for my patio')::vector) AS distance
+FROM cymbal_products cp JOIN cymbal_embedding ce ON ce.uniq_id = cp.uniq_id
+ORDER BY distance ASC LIMIT 5;
+</code></pre>
+  <div class="term" style="margin-top: 0.25em; font-size: 0.65em; line-height: 1.35;"> product_name  | sale_price | distance
+---------------+------------+----------
+ Garden Rake   |      20.00 |  0.53231
+ Wheelbarrow   |      50.00 |  0.53508
+ Watering Can  |      10.00 |  0.54338
+ Garden Trowel |      15.00 |  0.54852
+ Hat           |       5.00 |  0.54902</div>
+  <div class="callout green" style="margin-top: 0.5em; font-size: 0.8em; padding: 10px 14px;">
+    <strong>None of these product names contain "cheap" or "patio". The model understood <em>intent</em>.</strong>
+  </div>
+  <aside class="notes">
+    <p><strong>DO:</strong> Run the "cheap for my patio" query live. Same DB, no schema change.</p>
+    <p><strong>SAY:</strong> "Pichla result sochne wala bol sakta hai — bhaiya yeh ek lucky example tha. Maybe Cherry Tree match hua accident se."</p>
+    <p><strong>SAY:</strong> "Toh ek bilkul alag intent try karte hain. 'Something cheap for my patio.' No 'tree', no 'plant', no 'store'. Pure user intent."</p>
+    <p><strong>SAY (emphatic):</strong> "Dekho — Garden Rake, Wheelbarrow, Watering Can, Garden Trowel, Hat. Kisi product name mein 'cheap' ya 'patio' word hai? Zero. Model ne samjha — sasta + outdoor = garden tools + affordable items."</p>
+    <p><strong>SAY:</strong> "Same <code>&lt;=&gt;</code> operator. Same table. Same embedding function. Completely different natural-language query. Model ne semantic work handle kar liya — SQL ne sirf sort kiya."</p>
+    <p><strong>NOTE:</strong> THIS is the proof point students remember. Keyword search yahan bilkul fail hota.</p>
+    <p><strong>TIME:</strong> 0:32 – 0:34</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 20 — WHERE THE TIME ACTUALLY GOES  (was SLIDE 19 · rewritten)
+     ========================================================= -->
+<section>
+  <div class="kicker">EXPLAIN ANALYZE · the real story</div>
+  <h2>Where the time actually goes</h2>
+  <p class="dim" style="margin-top: -0.3em;">
+    Real <code>EXPLAIN ANALYZE</code> from the hero query. Total wall time: <strong>20,160 ms</strong>.
+  </p>
+
+  <!-- Inline SVG bar chart: 20,154 ms vs 6.6 ms -->
+  <svg viewBox="0 0 900 180" style="width: 100%; max-width: 900px; margin-top: 0.4em;" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif">
+    <!-- Row 1: embed query text (99.97%) -->
+    <text x="0" y="22" fill="#EA4335" font-size="15" font-weight="600">Embed query text via HTTP to TEI</text>
+    <text x="880" y="22" fill="#EA4335" font-size="15" font-weight="700" text-anchor="end">20,154 ms  ·  99.97%</text>
+    <rect x="0" y="32" width="880" height="34" fill="#EA4335" rx="3"/>
+    <text x="12" y="54" fill="#fff" font-size="13" font-family="JetBrains Mono, monospace">Planning Time (HTTP round-trip + model inference on CPU)</text>
+
+    <!-- Row 2: vector search + join + sort (0.03%) -->
+    <text x="0" y="102" fill="#34A853" font-size="15" font-weight="600">Vector similarity + JOIN + sort 941 rows</text>
+    <text x="880" y="102" fill="#34A853" font-size="15" font-weight="700" text-anchor="end">6.6 ms  ·  0.03%</text>
+    <rect x="0" y="112" width="0.3" height="34" fill="#34A853" rx="3"/>
+    <!-- make the tiny bar visible -->
+    <rect x="0" y="112" width="6" height="34" fill="#34A853" rx="3"/>
+    <text x="14" y="134" fill="#7a8798" font-size="13" font-family="JetBrains Mono, monospace">Execution Time (the bar is to scale — that's how fast AlloyDB is)</text>
+  </svg>
+
+  <div class="cols" style="margin-top: 0.4em;">
+    <div class="callout blue" style="font-size: 0.85em;">
+      <strong>At 941 rows, a sequential scan was fine.</strong> At 10 M rows, add <code>CREATE INDEX ... USING hnsw (embedding vector_cosine_ops)</code> — same SQL, sub-10 ms stays.
+    </div>
+    <div class="callout yellow" style="font-size: 0.85em;">
+      <strong>Real production fix:</strong> cache or pre-compute query embeddings. 99.97% of the cost is <em>embedding generation</em>, not search.
+    </div>
+  </div>
+
+  <aside class="notes">
+    <p><strong>DO:</strong> Show the <code>EXPLAIN ANALYZE</code> output on terminal alongside the slide, pointing at Planning Time vs Execution Time lines.</p>
+    <p><strong>SAY:</strong> "Pichla hero query 20 seconds liya. Sab sochenge — vector search slow hai kya? Bilkul ulta."</p>
+    <p><strong>SAY:</strong> "EXPLAIN ANALYZE break-down dekho. Planning Time: 20,153 milliseconds. Execution Time: 6.6 milliseconds. Yaani <strong>99.97% waqt query text ko embed karne mein gaya</strong> — HTTP call to TEI pod + CPU inference. Sirf 0.03% actual vector search + join + sort pe."</p>
+    <p><strong>SAY:</strong> "Yeh PostgreSQL ki speciality hai — Planning Time mein google_ml.embedding() function evaluate hota hai (constant folding), execution se pehle. Toh HTTP call planning mein dikhti hai."</p>
+    <p><strong>SAY:</strong> "Dono lessons important hain. Pehla — scale pe HNSW ya ScaNN index lagao, warna seq scan 10 million rows pe fail karega. Same SQL, bas CREATE INDEX add karo."</p>
+    <p><strong>SAY (bigger lesson):</strong> "Doosra lesson bada hai. Real production mein query embedding cache karo — Redis mein, ya pre-computed popular queries. OR — asli pattern — write-time pe embed karo, na ki read-time pe. Jo humne products ke saath kiya."</p>
+    <p><strong>SAY:</strong> "Yeh bhi important — 6.6 millisecond mein 941 vectors + 3-way join + top-5 sort. AlloyDB Omni fast hai. Jo aap slow dekh rahe ho woh network + model, not database."</p>
+    <p><strong>DO:</strong> After this, switch back to slide deck.</p>
+    <p><strong>TIME:</strong> 0:34 – 0:37</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 21 — DB LAYER FOR RAG
+     ========================================================= -->
+<section>
+  <div class="kicker">Where this goes · 1 / 3</div>
+  <h2>You just built the R in RAG</h2>
+  <div class="diagram">
+    <img src="assets/rag-flow.svg" alt="RAG flow" style="max-width: 100%;">
+  </div>
+  <p class="dim center" style="margin-top: 0.5em;">
+    Add a Gemini API call at the end → RAG chatbot. The DB work you just saw is 80% of a RAG pipeline.
+  </p>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Ab ek bada picture dekhte hain."</p>
+    <p><strong>SAY:</strong> "Jo tumne abhi dekha — yeh 'R' hai RAG ka. Retrieval."</p>
+    <p><strong>SAY:</strong> "Agar end mein ek LLM laga do — Gemini, Claude, GPT-4, anything — generation bhi ho jaayegi. Full RAG chatbot ban jaata hai."</p>
+    <p><strong>SAY (hackathon hook):</strong> "Next hackathon idea — yeh exact setup plus Gemini API. Retrieve top-5 documents, Gemini ko context ke saath bhejo, grounded answer milegi."</p>
+    <p><strong>SAY:</strong> "R is Retrieval — AlloyDB ka kaam. G is Generation — LLM ka kaam. Bad retrieval equals confidently wrong answers. Isiliye vector database matter karta hai."</p>
+    <p><strong>NOTE:</strong> This slide plants the "build this next" seed. Speak with energy.</p>
+    <p><strong>TIME:</strong> 0:36 – 0:38</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 22 — WHEN NOT TO USE ALLOYDB OMNI
+     ========================================================= -->
+<section>
+  <div class="kicker">Where this goes · 2 / 3</div>
+  <h2>When <em>not</em> to use AlloyDB Omni</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Option</th>
+        <th>Setup pain</th>
+        <th>Cost at 1M vectors</th>
+        <th>Best for</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong class="blue">pgvector on Supabase</strong></td>
+        <td>Low — SQL <code>CREATE EXTENSION</code></td>
+        <td>Free tier covers it</td>
+        <td>Side projects, hackathons, MVPs</td>
+      </tr>
+      <tr>
+        <td><strong class="green">AlloyDB Omni (today)</strong></td>
+        <td>Medium — K8s + operator</td>
+        <td>Self-host, pay for nodes (~$200+/mo)</td>
+        <td>Postgres shops, want best-in-class index</td>
+      </tr>
+      <tr>
+        <td><strong class="yellow">Pinecone / Weaviate</strong></td>
+        <td>Low — SaaS signup</td>
+        <td>$70–300+ / mo</td>
+        <td>Dedicated vector needs, hybrid search</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout blue" style="margin-top: 0.8em;">
+    <strong>Honest advice:</strong> Start with pgvector. Migrate only when you actually hit its limits.
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Honest comparison time."</p>
+    <p><strong>SAY:</strong> "pgvector — sabse simple. Supabase free tier mein mil jaata hai. Side projects aur hackathons ke liye winner."</p>
+    <p><strong>SAY:</strong> "AlloyDB Omni — tab use karo jab already Postgres shop ho, aur analytical queries plus vector queries dono ho."</p>
+    <p><strong>SAY:</strong> "Pinecone, Weaviate — tab use karo jab managed service chahiye, infra nahi chalani, aur budget hai. Pure SaaS."</p>
+    <p><strong>SAY (real advice):</strong> "Mera suggestion — pgvector se shuru karo. Migrate tab karo jab actually limit hit ho. Premature optimization avoid."</p>
+    <p><strong>NOTE:</strong> Credibility-building slide. Don't advocate — compare honestly.</p>
+    <p><strong>TIME:</strong> 0:38 – 0:40</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 23 — WHAT'S ACTUALLY HARD
+     ========================================================= -->
+<section>
+  <div class="kicker">Where this goes · 3 / 3</div>
+  <h2>What's actually hard in production</h2>
+  <ul>
+    <li><strong class="yellow">Model upgrades</strong> — new EmbeddingGemma version → all 10M vectors must be re-generated</li>
+    <li><strong class="yellow">Dimension mismatch</strong> — old vectors are 768d, new are 1024d → rebuild table</li>
+    <li><strong class="yellow">Index rebuild time</strong> — ScaNN rebuild on 100M vectors is an overnight job</li>
+    <li><strong class="yellow">Embedding drift</strong> — language evolves ("rizz", "delulu") → old embeddings don't capture new usage</li>
+    <li><strong class="yellow">Cold start</strong> — TEI container image is ~2-5 GB, pulls take minutes on fresh nodes</li>
+  </ul>
+  <p class="dim" style="margin-top: 0.6em;">
+    These aren't blockers — they're the "level 2" problems waiting for you after the happy path works.
+  </p>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Ek real talk — production mein kya pain points aate hain."</p>
+    <p><strong>SAY:</strong> "Model upgrade — new EmbeddingGemma version release hua? Sab 10 million vectors regenerate karne padenge. Days ka job."</p>
+    <p><strong>SAY:</strong> "Dimension change — 768 se 1024 dims — table schema rebuild."</p>
+    <p><strong>SAY:</strong> "Index rebuild on 100 million rows — overnight job. Plan karna padta hai."</p>
+    <p><strong>SAY:</strong> "Language drift — 'rizz', 'delulu' — 2021 ka model aaj ki Gen Z slang nahi samajhta. Models ko time ke saath refresh karna padta hai."</p>
+    <p><strong>SAY:</strong> "Yeh issues solvable hain — but aware rehna. Demo dekh ke mat socho sab easy hai."</p>
+    <p><strong>NOTE:</strong> 45 sec max. Tease, don't deep dive. Shows you think about production.</p>
+    <p><strong>TIME:</strong> 0:40 – 0:42</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 24 — WHY THREE LINES DIFFER (narrative)  [NEW]
+     ========================================================= -->
+<section>
+  <div class="kicker">Reality check · intro</div>
+  <h2 style="font-size: 1.25em; margin-bottom: 0.05em;">Three lines change. Everything else is codelab-identical.</h2>
+  <p class="dim" style="margin: 0 0 0.45em 0; font-size: 0.72em;">
+    Codelab assumes production quotas. You're on trial. Here's the entire diff.
+  </p>
+
+  <!-- Three before/after cards -->
+  <div style="display: flex; flex-direction: column; gap: 6px;">
+
+    <!-- Card 1 -->
+    <div style="border-left: 3px solid var(--g-blue); padding-left: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+        <div style="font-size: 0.82em;"><span style="color: var(--g-blue); font-weight: 600;">1 · Cluster create</span></div>
+        <div style="font-size: 0.68em; color: var(--fg-dim);">Trial caps SSD at 250 GB</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="term" style="margin: 0; padding: 6px 11px; font-size: 0.58em;"><span class="cmt">-- codelab</span>
+gcloud ... clusters create \
+  --num-nodes=1 --release-channel=rapid</div>
+        <div class="term" style="margin: 0; padding: 6px 11px; font-size: 0.58em; border-left: 3px solid var(--g-green);"><span class="cmt">-- ours (add 2 flags)</span>
+gcloud ... clusters create \
+  --num-nodes=1 --release-channel=rapid \
+  <span style="color:#34A853">--disk-type=pd-standard --disk-size=50</span></div>
+      </div>
+    </div>
+
+    <!-- Card 2 -->
+    <div style="border-left: 3px solid var(--g-yellow); padding-left: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+        <div style="font-size: 0.82em;"><span style="color: var(--g-yellow); font-weight: 600;">2 · DBCluster manifest</span></div>
+        <div style="font-size: 0.68em; color: var(--fg-dim);">8 Gi pod + sidecars won't fit on e2-standard-4</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="term" style="margin: 0; padding: 6px 11px; font-size: 0.58em;"><span class="cmt"># codelab</span>
+resources:
+  memory: <span style="color:#FBBC04">8Gi</span>
+  cpuCount: 2</div>
+        <div class="term" style="margin: 0; padding: 6px 11px; font-size: 0.58em; border-left: 3px solid var(--g-green);"><span class="cmt"># ours</span>
+resources:
+  memory: <span style="color:#34A853">4Gi</span>
+  cpuCount: 2</div>
+      </div>
+    </div>
+
+    <!-- Card 3 -->
+    <div style="border-left: 3px solid var(--g-red); padding-left: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+        <div style="font-size: 0.82em;"><span style="color: var(--g-red); font-weight: 600;">3 · TEI deployment</span></div>
+        <div style="font-size: 0.68em; color: var(--fg-dim);">No c3 on trial; 300m model fits in 4 Gi</div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="term" style="margin: 0; padding: 6px 11px; font-size: 0.58em;"><span class="cmt"># codelab</span>
+cpu: <span style="color:#FBBC04">"6"</span>
+memory: <span style="color:#FBBC04">"24Gi"</span>
+nodeSelector: <span style="color:#FBBC04">c3</span></div>
+        <div class="term" style="margin: 0; padding: 6px 11px; font-size: 0.58em; border-left: 3px solid var(--g-green);"><span class="cmt"># ours</span>
+cpu: <span style="color:#34A853">"2"</span>
+memory: <span style="color:#34A853">"4Gi"</span>
+<span style="color:#34A853"># no nodeSelector</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="callout blue" style="margin-top: 0.7em; font-size: 0.72em; padding: 9px 14px;">
+    <strong>Everything else is identical.</strong> Same SQL, same <code>&lt;=&gt;</code> operator, same <code>google_ml.embedding()</code>, same model registration, same hero query.
+  </div>
+
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Ek honest disclosure — codelab production-grade defaults ke saath likha hua hai. Aap trial account pe ho. Exactly teen lines change karni padti hain. Sab kuch yahan hai."</p>
+    <p><strong>SAY (card 1 — Cluster create):</strong> "Codelab mein pd-balanced default boot disk hai, 100 GB per node. Trial mein SSD quota 250 GB pe cap hoti hai — teen nodes ka 300 GB hit ho jayega. Solution: <code>--disk-type=pd-standard --disk-size=50</code>. HDD-backed boot disk, 50 GB per node. Quota clean."</p>
+    <p><strong>SAY (card 2 — DBCluster manifest):</strong> "Codelab mein memory 8 Gi hai AlloyDB pod ke liye. Par 12 vCPU trial cap ke wajah se tumhare nodes e2-standard-4 hain (har node 16 Gi). Us node pe 8 Gi pod + cert-manager + alloydb-operator sidecars nahi fit hote — FailedScheduling error aayega. 4 Gi karo, fit ho jaata hai."</p>
+    <p><strong>SAY (card 3 — TEI deployment):</strong> "Codelab c3 machine type maangta hai (high-perf CPU), resources cpu 6 / memory 24 Gi. Trial mein c3 allocation allowed nahi, aur itna resource bhi nahi hai. Solution: cpu 2 / memory 4 Gi, nodeSelector hata do. EmbeddingGemma-300m CPU inference pe 4 Gi mein easily chalta hai — thoda slow, par chalta hai."</p>
+    <p><strong>SAY (the meta-point):</strong> "Yeh teen lines ke alawa — SQL bilkul codelab-verbatim. Concepts same. The thing you're learning here IS the codelab. Trust builds karne ke liye yeh slide important hai — kal jab codelab run karoge, tum exactly yehi infrastructure dekhoge."</p>
+    <p><strong>NOTE:</strong> This slide is the narrative. Next slide (Trial Realities table) is the quick-reference summary.</p>
+    <p><strong>TIME:</strong> 0:41 – 0:42</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 25 — TRIAL-ACCOUNT REALITIES  (was SLIDE 23)
+     ========================================================= -->
+<section>
+  <div class="kicker">Reality check · 1 / 3</div>
+  <h2>Trial-account realities</h2>
+  <p class="dim" style="margin-top: -0.4em;">
+    Three lines of code where we deviate from codelab-verbatim. SQL + concepts stay 100% intact.
+  </p>
+  <table style="width: 100%; border-collapse: collapse; font-size: 0.68em; margin-top: 0.5em;">
+    <thead>
+      <tr style="border-bottom: 2px solid var(--g-blue);">
+        <th style="text-align: left; padding: 8px 10px; color: var(--g-blue);">What</th>
+        <th style="text-align: left; padding: 8px 10px;">Codelab default</th>
+        <th style="text-align: left; padding: 8px 10px; color: var(--g-green);">Our version</th>
+        <th style="text-align: left; padding: 8px 10px; color: var(--fg-dim);">Why</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+        <td style="padding: 10px;"><strong>Cluster boot disk</strong></td>
+        <td style="padding: 10px;"><code>pd-balanced</code> 100 GB &times; 3 = <span class="yellow">300 GB</span></td>
+        <td style="padding: 10px;"><code>pd-standard</code> 50 GB &times; 3 = <span class="green">150 GB</span></td>
+        <td style="padding: 10px;" class="dim">SSD quota 250 GB cap</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+        <td style="padding: 10px;"><strong>AlloyDB memory</strong></td>
+        <td style="padding: 10px;"><span class="yellow">8 Gi</span></td>
+        <td style="padding: 10px;"><span class="green">4 Gi</span></td>
+        <td style="padding: 10px;" class="dim">Pod won't schedule on e2-standard-4 at 8 Gi</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px;"><strong>TEI resources</strong></td>
+        <td style="padding: 10px;">cpu 6 / mem 24 Gi / <span class="yellow">c3 node</span></td>
+        <td style="padding: 10px;">cpu 2 / mem 4 Gi / <span class="green">any node</span></td>
+        <td style="padding: 10px;" class="dim">No c3 in trial; 12 vCPU global cap</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout blue" style="margin-top: 1em; font-size: 0.78em;">
+    <strong>Everything else — SQL, <code>&lt;-&gt;</code> operator, <code>google_ml.embedding()</code>, model registration, hero query — is codelab-verbatim.</strong>
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Ek honest disclosure — codelab production-grade defaults ke saath likha hua hai. Trial account pe teen jagah thoda modify karna padega."</p>
+    <p><strong>SAY:</strong> "Pehla — disk type. Codelab pd-balanced use karta hai, 300 GB total. Trial mein SSD quota 250 GB pe cap hoti hai. Toh pd-standard 50 GB per node — quota safe."</p>
+    <p><strong>SAY:</strong> "Doosra — AlloyDB memory 8 Gi se 4 Gi. Warna e2-standard-4 node pe pod schedule hi nahi hoga. FailedScheduling error aayega."</p>
+    <p><strong>SAY:</strong> "Teesra — TEI resources. Codelab c3 machine type use karta hai jo trial mein allowed nahi. Aur 12 vCPU global cap hai — toh requests kam karke any node pe chalne do."</p>
+    <p><strong>SAY (important):</strong> "Baaki sab — SQL, vector operator, embedding function, hero query — bilkul codelab-verbatim. Yani yeh 3 lines of YAML ke alawa tum exactly wahi kar rahe ho jo codelab kehta hai."</p>
+    <p><strong>DO:</strong> Point at the blue callout at bottom — "concepts unchanged."</p>
+    <p><strong>NOTE:</strong> This slide builds trust. Students realize you've actually run it and hit the walls.</p>
+    <p><strong>TIME:</strong> 0:42 – 0:43</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 26 — 45-MIN TIMELINE
+     ========================================================= -->
+<section>
+  <div class="kicker">Reality check · 2 / 3</div>
+  <h2>How the 45 minutes actually flows</h2>
+  <table style="width: 100%; border-collapse: collapse; font-size: 0.6em; margin-top: 0.4em;">
+    <thead>
+      <tr style="border-bottom: 2px solid var(--g-yellow);">
+        <th style="text-align: left; padding: 6px 8px; width: 13%; color: var(--g-yellow);">Time</th>
+        <th style="text-align: left; padding: 6px 8px; color: var(--g-blue);">Student is doing</th>
+        <th style="text-align: left; padding: 6px 8px; color: var(--g-green);">Speaker is doing</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+        <td style="padding: 7px 8px;"><code>10:00&ndash;10:03</code></td>
+        <td style="padding: 7px 8px;">Open Cloud Shell, set project, enable APIs</td>
+        <td style="padding: 7px 8px;" class="dim">Kickoff slides 1&ndash;3, the hook</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+        <td style="padding: 7px 8px;"><code>10:03&ndash;10:08</code></td>
+        <td style="padding: 7px 8px;">Watching + pre-work recap</td>
+        <td style="padding: 7px 8px;" class="dim">Concepts 4&ndash;7 (embeddings, vectors, <code>&lt;-&gt;</code>)</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(251,188,4,0.06);">
+        <td style="padding: 7px 8px;"><code>10:08&ndash;10:18</code></td>
+        <td style="padding: 7px 8px;"><strong class="yellow">gcloud clusters create</strong> (~8 min wait)</td>
+        <td style="padding: 7px 8px;" class="dim">Architecture slide 10, shadow demo queries</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+        <td style="padding: 7px 8px;"><code>10:18&ndash;10:24</code></td>
+        <td style="padding: 7px 8px;">cert-manager + Helm install operator</td>
+        <td style="padding: 7px 8px;" class="dim">Slides 11&ndash;12 (Omni, Operators)</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+        <td style="padding: 7px 8px;"><code>10:24&ndash;10:30</code></td>
+        <td style="padding: 7px 8px;">Create DBCluster + wait Ready</td>
+        <td style="padding: 7px 8px;" class="dim">Slide 13 (EmbeddingGemma) + shadow SQL</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(251,188,4,0.06);">
+        <td style="padding: 7px 8px;"><code>10:30&ndash;10:38</code></td>
+        <td style="padding: 7px 8px;"><strong class="yellow">Deploy TEI + secret + register model + INSERT</strong> (embed ~8 min)</td>
+        <td style="padding: 7px 8px;" class="dim">Slides 14&ndash;17 (request flow + embedding gen), hero query preview</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(52,168,83,0.1);">
+        <td style="padding: 7px 8px;"><code>10:38&ndash;10:40</code></td>
+        <td style="padding: 7px 8px;"><strong class="green">Hero query #1: "fruit trees"</strong></td>
+        <td style="padding: 7px 8px;" class="dim">Slide 18, celebrate side-by-side on shadow</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(52,168,83,0.06);">
+        <td style="padding: 7px 8px;"><code>10:40&ndash;10:41</code></td>
+        <td style="padding: 7px 8px;"><strong class="green">Hero query #2: "cheap for my patio"</strong></td>
+        <td style="padding: 7px 8px;" class="dim">Slide 19 (semantic-not-keyword proof)</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+        <td style="padding: 7px 8px;"><code>10:41&ndash;10:42</code></td>
+        <td style="padding: 7px 8px;">Listen to timing insight</td>
+        <td style="padding: 7px 8px;" class="dim">Slide 20 (20s TEI vs 7ms vector search)</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+        <td style="padding: 7px 8px;"><code>10:42&ndash;10:43</code></td>
+        <td style="padding: 7px 8px;">"Why three lines differ" + trial realities</td>
+        <td style="padding: 7px 8px;" class="dim">Slides 21&ndash;25 (RAG, production, deviations)</td>
+      </tr>
+      <tr>
+        <td style="padding: 7px 8px;"><code>10:43&ndash;10:45</code></td>
+        <td style="padding: 7px 8px;"><strong class="red">MANDATORY teardown</strong> + codelab QR</td>
+        <td style="padding: 7px 8px;" class="dim">Slides 28&ndash;29 (QR homework + thanks)</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout yellow" style="margin-top: 0.6em; font-size: 0.7em;">
+    Two slow steps (cluster create 8 min, embedding generation 8 min) <strong>overlap with concept slides</strong> — that's how 45 min actually fits. Green rows = your hero moments.
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Yeh cheat-sheet hai. Time kaise use hoga, exact minute by minute."</p>
+    <p><strong>SAY:</strong> "Dekho — do slow operations hain. Ek cluster creation, lagbhag 8 minute. Doosra embedding generation, 941 products ke liye, around 8 minute."</p>
+    <p><strong>SAY (key insight):</strong> "Agar sequentially chalega toh 45 min mein fit nahi hoga. Isliye overlap kiya hai — jab tumhara cluster ban raha hai, main concepts padha raha hoon. Jab embedding chal rahi hai, main request flow samjha raha hoon."</p>
+    <p><strong>SAY:</strong> "Highlighted yellow rows — wahi slow steps hain. Green rows — aapka hero moments, do queries chalayenge: fruit trees aur patio. Different intent, same magic."</p>
+    <p><strong>SAY:</strong> "10:41 pe ek slide dikhaunga timing ka — 20 second query latency mein se 99% embedding mein gaya, sirf 7 millisecond actual search mein. Yeh production lesson hai."</p>
+    <p><strong>SAY (heavy):</strong> "Last 2 minute — teardown. Cluster delete. Non-negotiable. 200 dollar ka bill chahiye kya?"</p>
+    <p><strong>NOTE (abort path):</strong> If students are behind schedule at 10:40 (hero query still failing), skip slides 19 &amp; 20 &amp; 24 — jump straight from slide 18 to the teardown at 10:43. Patio query + timing split are "if time permits" bonuses.</p>
+    <p><strong>DO:</strong> Point at highlighted rows. Don't read the whole table — let students absorb.</p>
+    <p><strong>NOTE:</strong> 40 sec max. This slide is for orientation, not deep read.</p>
+    <p><strong>TIME:</strong> 0:43 – 0:44</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 27 — WHEN THINGS BREAK (LIVE DEBUG QUICK-REF)
+     ========================================================= -->
+<section>
+  <div class="kicker">Reality check · 3 / 3</div>
+  <h2 style="font-size: 1.3em; margin-bottom: 0.15em;">When things break — live debug reference</h2>
+  <p class="dim" style="margin: 0 0 0.5em 0; font-size: 0.75em;">
+    Four errors I hit in the dry run, and the one-line fix for each. Keep this slide on screen during hands-on.
+  </p>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 12px;">
+
+    <div style="background: var(--bg-2); border-left: 4px solid var(--g-red); border-radius: 0 8px 8px 0; padding: 12px 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
+        <div style="color: var(--g-red); font-weight: 600; font-size: 0.78em; letter-spacing: 0.02em;">SSD_TOTAL_GB quota error</div>
+        <div style="color: var(--fg-dim); font-size: 0.58em;">on <code style="font-size: 0.9em;">clusters create</code></div>
+      </div>
+      <p style="margin: 0 0 6px 0; font-size: 0.62em; color: var(--fg-dim);">Trial cap: 250 GB regional SSD.</p>
+      <div class="term" style="margin: 0; padding: 8px 12px; font-size: 0.58em;"><span class="prompt">$</span> gcloud container clusters create ... \
+  --disk-type=<span class="blue">pd-standard</span> --disk-size=<span class="blue">50</span></div>
+    </div>
+
+    <div style="background: var(--bg-2); border-left: 4px solid var(--g-yellow); border-radius: 0 8px 8px 0; padding: 12px 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
+        <div style="color: var(--g-yellow); font-weight: 600; font-size: 0.78em; letter-spacing: 0.02em;">Pod FailedScheduling: memory</div>
+        <div style="color: var(--fg-dim); font-size: 0.58em;">AlloyDB pod Pending</div>
+      </div>
+      <p style="margin: 0 0 6px 0; font-size: 0.62em; color: var(--fg-dim);">8 Gi won't fit on e2-standard-4 + cert-manager.</p>
+      <div class="term" style="margin: 0; padding: 8px 12px; font-size: 0.58em;"><span class="prompt">$</span> kubectl patch dbcluster my-omni --type=merge \
+  -p '{"spec":{"primarySpec":{"resources":
+  {"memory":"<span class="blue">4Gi</span>"}}}}'</div>
+    </div>
+
+    <div style="background: var(--bg-2); border-left: 4px solid var(--g-blue); border-radius: 0 8px 8px 0; padding: 12px 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
+        <div style="color: var(--g-blue); font-weight: 600; font-size: 0.78em; letter-spacing: 0.02em;">TEI CreateContainerConfigError</div>
+        <div style="color: var(--fg-dim); font-size: 0.58em;">secret not found</div>
+      </div>
+      <p style="margin: 0 0 6px 0; font-size: 0.62em; color: var(--fg-dim);">Create HF secret <em>before</em> TEI Deployment.</p>
+      <div class="term" style="margin: 0; padding: 8px 12px; font-size: 0.58em;"><span class="prompt">$</span> kubectl create secret generic hf-secret \
+  --from-literal=hf_api_token=$HF_TOKEN \
+  --dry-run=client -o yaml | kubectl apply -f -</div>
+    </div>
+
+    <div style="background: var(--bg-2); border-left: 4px solid var(--g-green); border-radius: 0 8px 8px 0; padding: 12px 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
+        <div style="color: var(--g-green); font-weight: 600; font-size: 0.78em; letter-spacing: 0.02em;">gke-gcloud-auth-plugin failed</div>
+        <div style="color: var(--fg-dim); font-size: 0.58em;">Cloud Shell dropped</div>
+      </div>
+      <p style="margin: 0 0 6px 0; font-size: 0.62em; color: var(--fg-dim);">Re-auth, re-fetch kubeconfig.</p>
+      <div class="term" style="margin: 0; padding: 8px 12px; font-size: 0.58em;"><span class="prompt">$</span> gcloud auth login
+<span class="prompt">$</span> gcloud container clusters \
+  get-credentials alloydb-ai-gke --region=us-central1</div>
+    </div>
+
+  </div>
+
+  <p class="dim" style="margin-top: 0.55em; font-size: 0.68em; text-align: center;">
+    Hit one of these? <strong class="yellow">Raise your hand immediately</strong> — I've debugged all four.
+  </p>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Aur ek real talk — live demo mein kuch na kuch break karta hi hai. Isliye yeh slide."</p>
+    <p><strong>SAY:</strong> "Ye chaaron errors maine khud dry run mein hit kiye hain. Fixes ready hain."</p>
+    <p><strong>SAY:</strong> "Ek — SSD quota. Fix: pd-standard, 50 GB. Yeh hum already trial-realities slide mein discuss kar chuke."</p>
+    <p><strong>SAY:</strong> "Do — pod FailedScheduling. DBCluster patch karo, memory 4Gi."</p>
+    <p><strong>SAY:</strong> "Teen — TEI CreateContainerConfigError. HuggingFace token secret missing. One-liner fix screen pe hai."</p>
+    <p><strong>SAY:</strong> "Chaar — auth plugin. Bas <code>gcloud auth login</code> dobara."</p>
+    <p><strong>SAY (critical):</strong> "Agar in mein se koi error dikhe — HAATH UTHAO turant. Chupchap mat baitho, wait mat karo. 45 min mein silent struggling ka time nahi hai."</p>
+    <p><strong>DO:</strong> Scan room, make eye contact. Set the expectation clearly.</p>
+    <p><strong>NOTE:</strong> This slide lives on screen as reference during hands-on phase — don't advance away quickly.</p>
+    <p><strong>TIME:</strong> 0:44 – 0:45 (but slide stays visible during hands-on)</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 28 — DO THE CODELAB
+     ========================================================= -->
+<section>
+  <div class="kicker">Your homework</div>
+  <h2>Actually run it yourself</h2>
+  <div class="cols">
+    <div>
+      <div class="col-head">Scan to go to the codelab</div>
+      <div style="background: white; padding: 16px; border-radius: 10px; display: inline-block; margin: 8px 0;">
+        <img src="assets/qr-codelab.png" alt="QR to codelab" width="240" height="240">
+      </div>
+      <p class="dim" style="font-size: 0.65em;">codelabs.developers.google.com/alloydb-omni-gke-embeddings</p>
+    </div>
+    <div>
+      <div class="col-head">Try these three extensions</div>
+      <ol>
+        <li><strong class="blue">Swap the dataset</strong> — run it on your own CSV (IMDB reviews? your resume PDFs?)</li>
+        <li><strong class="green">Add a metadata filter</strong> — <code>WHERE price &lt; 1000</code> + vector search in one query</li>
+        <li><strong class="yellow">Wire up Gemini</strong> — retrieve top-5, ask Gemini to summarise. You now have RAG.</li>
+      </ol>
+      <div class="callout green" style="margin-top: 0.6em; font-size: 0.75em;">
+        <strong>Cost warning:</strong> Delete your cluster after.
+        <code>gcloud container clusters delete ...</code>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Ghar pe yeh khud se karo. QR scan karo, codelab link mil jaayega."</p>
+    <p><strong>SAY:</strong> "Three extensions try karo, increasing difficulty."</p>
+    <p><strong>SAY:</strong> "Ek — apna dataset use karo. IMDB reviews, resume PDFs, kuch bhi."</p>
+    <p><strong>SAY:</strong> "Do — metadata filter add karo. <code>WHERE price &lt; 1000</code> plus vector search — same query mein."</p>
+    <p><strong>SAY:</strong> "Teen — Gemini API connect karo. Full RAG chatbot ban jaayega."</p>
+    <p><strong>SAY (heavy emphasis):</strong> "Ek important warning — cluster delete karna mat bhoolna. Raat bhar chalega toh Monday ko inbox mein 200 dollar ka bill. <code>gcloud container clusters delete</code> command screen pe hai."</p>
+    <p><strong>DO:</strong> Pause, give students time to scan QR with phone.</p>
+    <p><strong>TIME:</strong> 0:44 – 0:45 (shown right after the debug quick-ref; lingers into Q&A)</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 29 — THANKS + Q&A
+     ========================================================= -->
+<section class="title-slide">
+  <div class="kicker">Thanks &amp; questions</div>
+  <h1>Your turn<span class="blue">.</span></h1>
+  <h3>Questions, ideas, build plans — all welcome.</h3>
+  <div class="gdg-bar">
+    <span class="b1"></span><span class="b2"></span><span class="b3"></span><span class="b4"></span>
+  </div>
+  <div class="meta" style="margin-top: 1.5em;">
+    <strong>Ishan Katoch</strong> · <span class="dim">Shorthills AI</span><br>
+    <span class="dim">GDG IGDTUW · BuildSpace 2.0 · 25 Apr 2026</span><br><br>
+    Connect via LinkedIn QR on the final slide.
+  </div>
+  <aside class="notes">
+    <p><strong>SAY:</strong> "Thank you! Questions?"</p>
+    <p><strong>DO:</strong> Repeat each question in the mic before answering — so the back row hears it.</p>
+    <p><strong>NOTE — common Q&amp;A ready:</strong></p>
+    <ul>
+      <li>"Laptop pe chal sakta hai?" → "Haan, Docker plus AlloyDB Omni image. Simpler: pgvector locally."</li>
+      <li>"Internship ke liye kya seekhun?" → "SQL strong karo, K8s basics, ek LLM API project build karo."</li>
+      <li>"GCP pe kitna cost hota hai?" → "Free tier GKE control plane cover karta hai. Compute nodes 10 cents/hr each."</li>
+      <li>"GDG IGDTUW mein kaise join?" → chapter page link, organiser ko intro karao.</li>
+    </ul>
+    <p><strong>NOTE:</strong> Tough question jo answer na pata ho — honestly bolo: "Main note kar raha hun, LinkedIn pe follow-up karunga." Bluff mat maaro.</p>
+    <p><strong>SAY (closing):</strong> "Jo bhi build karo yeh se inspired hoke, LinkedIn pe tag karo. Dekhna chaunga."</p>
+    <p><strong>TIME:</strong> 0:44 – 0:45</p>
+  </aside>
+</section>
+
+<!-- =========================================================
+     SLIDE 30 — STAY IN TOUCH (LinkedIn QR)
+     ========================================================= -->
+<section class="title-slide">
+  <div class="kicker" style="color: var(--g-blue);">Stay in touch</div>
+  <h1>Let's connect<span class="blue">.</span></h1>
+  <div class="cols" style="margin-top: 0.6em; align-items: center;">
+    <div style="text-align: center;">
+      <img src="assets/qr-linkedin.png"
+           alt="LinkedIn QR — Ishan Katoch"
+           style="width: 280px; height: 280px; border-radius: 14px; background: #fff; padding: 8px;">
+      <p class="dim" style="margin-top: 0.5em; font-size: 0.85em;">Scan to connect</p>
+    </div>
+    <div>
+      <h3 style="margin: 0 0 0.3em 0;">Ishan Katoch</h3>
+      <p class="dim" style="margin: 0 0 0.9em 0;">Shorthills AI · Delhi</p>
+      <ul style="list-style: none; padding: 0; line-height: 1.9; font-size: 0.9em;">
+        <li style="display: flex; align-items: center; gap: 14px;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4285F4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6z"/>
+            <rect x="2" y="9" width="4" height="12"/>
+            <circle cx="4" cy="4" r="2"/>
+          </svg>
+          <span><strong>LinkedIn</strong> — scan the QR</span>
+        </li>
+
+        <li style="display: flex; align-items: center; gap: 14px;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34A853" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          <span>Tag me when you ship something built with this</span>
+        </li>
+      </ul>
+      <p class="dim" style="margin-top: 1em; font-size: 0.85em;">
+        Follow-up questions, internship queries, build feedback — DMs open.
+      </p>
+    </div>
+  </div>
+  <div class="gdg-bar" style="margin-top: 0.7em;">
+    <span class="b1"></span><span class="b2"></span><span class="b3"></span><span class="b4"></span>
+  </div>
+  <aside class="notes">
+    <p><strong>DO:</strong> Leave this slide up on the projector for the last 2-3 min while people pack up. QR gives maximum scan time.</p>
+    <p><strong>SAY:</strong> "Ek kaam karo — LinkedIn pe connect karo abhi, scan karke. Sawaal baad mein aaye toh DM karo."</p>
+    <p><strong>SAY:</strong> "Internship, project feedback, ya career advice — kuch bhi. Seniors bhi seniors se seekhte hain."</p>
+    <p><strong>NOTE:</strong> Backup — if QR scanning fails (common with dark backgrounds), just say "linkedin dot com slash in slash ishankatoch" clearly.</p>
+    <p><strong>TIME:</strong> 0:45 — linger slide (post-Q&A bleed)</p>
+  </aside>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    slideNumber: 'c/t',
+    width: 1280,
+    height: 720,
+    margin: 0.03,
+    center: false,
+    transition: 'fade',
+    backgroundTransition: 'fade',
+    controlsTutorial: false,
+    pdfSeparateFragments: false,
+    plugins: [RevealHighlight, RevealNotes]
+  });
+</script>
+</body>
+</html>

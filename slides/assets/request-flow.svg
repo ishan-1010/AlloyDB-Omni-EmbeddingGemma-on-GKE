@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 360" font-family="Inter, sans-serif">
+  <defs>
+    <marker id="arrf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4285F4"/>
+    </marker>
+    <style>
+      .step { fill: #14171c; stroke: #4285F4; stroke-width: 1.5; rx: 10; }
+      .step-hot { fill: #14171c; stroke: #EA4335; stroke-width: 1.8; rx: 10; }
+      .num  { fill: #4285F4; font-size: 22px; font-weight: 700; }
+      .num-hot { fill: #EA4335; font-size: 22px; font-weight: 700; }
+      .ttl  { fill: #e8eaed; font-size: 14px; font-weight: 600; }
+      .sub  { fill: #9aa0a6; font-size: 12px; }
+      .mono { fill: #c8f5c8; font-size: 11px; font-family: "JetBrains Mono", monospace; font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+      .arrow{ stroke: #4285F4; stroke-width: 1.8; fill: none; }
+      .title{ fill: #e8eaed; font-size: 20px; font-weight: 600; }
+    </style>
+  </defs>
+
+  <text x="500" y="35" text-anchor="middle" fill="#9aa0a6" font-size="14" font-style="italic">one SQL statement does all of this</text>
+
+  <!-- 5 boxes horizontally -->
+  <g>
+    <rect x="20"  y="130" width="170" height="110" class="step"/>
+    <text x="38"  y="162" class="num">1</text>
+    <text x="38"  y="192" class="ttl">User query</text>
+    <text x="38"  y="212" class="sub">"fruit trees that</text>
+    <text x="38"  y="228" class="sub">grow well here?"</text>
+  </g>
+
+  <g>
+    <rect x="218" y="130" width="170" height="110" class="step-hot"/>
+    <text x="236" y="162" class="num-hot">2</text>
+    <text x="236" y="188" class="ttl">google_ml</text>
+    <text x="236" y="205" class="ttl">.embedding(...)</text>
+    <text x="236" y="222" class="sub">SQL → HTTP → TEI</text>
+    <text x="236" y="236" class="sub" fill="#EA4335">this step dominates</text>
+  </g>
+
+  <g>
+    <rect x="416" y="130" width="170" height="110" class="step"/>
+    <text x="434" y="162" class="num">3</text>
+    <text x="434" y="192" class="ttl">768-dim vector</text>
+    <text x="434" y="212" class="mono">[-0.087, -0.011,</text>
+    <text x="434" y="228" class="mono"> 0.026, 0.013, ...]</text>
+  </g>
+
+  <g>
+    <rect x="614" y="130" width="170" height="110" class="step"/>
+    <text x="632" y="162" class="num">4</text>
+    <text x="632" y="188" class="ttl">ORDER BY</text>
+    <text x="632" y="206" class="mono">ce.embedding &lt;=&gt; v</text>
+    <text x="632" y="224" class="sub">pgvector sorts 941 rows</text>
+    <text x="632" y="238" class="sub">by cosine distance</text>
+  </g>
+
+  <g>
+    <rect x="812" y="130" width="170" height="110" class="step" stroke="#34A853"/>
+    <text x="830" y="162" class="num" fill="#34A853">5</text>
+    <text x="830" y="192" class="ttl">Top 5 rows</text>
+    <text x="830" y="212" class="sub">Cherry Tree,</text>
+    <text x="830" y="228" class="sub">California Lilac, …</text>
+  </g>
+
+  <!-- Arrows between boxes -->
+  <path d="M 192 185 L 216 185" class="arrow" marker-end="url(#arrf)"/>
+  <path d="M 390 185 L 414 185" class="arrow" marker-end="url(#arrf)"/>
+  <path d="M 588 185 L 612 185" class="arrow" marker-end="url(#arrf)"/>
+  <path d="M 786 185 L 810 185" class="arrow" marker-end="url(#arrf)"/>
+
+  <!-- Honest timing callout -->
+  <text x="500" y="288" text-anchor="middle" fill="#FBBC04" font-size="14" font-weight="600">
+    ~20.5 s wall time · of which ~20,150 ms is TEI (step 2) and ~6 ms is vector search (step 4)
+  </text>
+  <text x="500" y="310" text-anchor="middle" class="sub">
+    one client-to-DB round trip · no Python glue · the timing split is the core production lesson
+  </text>
+</svg>

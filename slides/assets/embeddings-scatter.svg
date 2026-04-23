@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 460" font-family="Inter, sans-serif">
+  <defs>
+    <style>
+      .axis   { stroke: #2a2f36; stroke-width: 1.5; }
+      .grid   { stroke: #1b1f24; stroke-width: 1; }
+      .lbl    { fill: #9aa0a6; font-size: 13px; }
+      .pt-text{ fill: #e8eaed; font-size: 14px; font-weight: 500; }
+      .cluster-hint { fill: none; stroke-width: 1.2; stroke-dasharray: 5 4; opacity: 0.5; }
+      .title  { fill: #e8eaed; font-size: 18px; font-weight: 600; }
+      .caption{ fill: #9aa0a6; font-size: 13px; font-style: italic; }
+    </style>
+  </defs>
+
+  <text x="450" y="30" text-anchor="middle" class="caption">similar things cluster, dissimilar things drift apart</text>
+
+  <!-- Axes -->
+  <line x1="90" y1="400" x2="840" y2="400" class="axis"/>
+  <line x1="90" y1="90"  x2="90"  y2="400" class="axis"/>
+  <text x="820" y="420" class="lbl">dim 1 →</text>
+  <text x="70"  y="100" class="lbl" transform="rotate(-90 70 100)">dim 2 →</text>
+
+  <!-- Grid -->
+  <line x1="90" y1="180" x2="840" y2="180" class="grid"/>
+  <line x1="90" y1="290" x2="840" y2="290" class="grid"/>
+  <line x1="320" y1="90" x2="320" y2="400" class="grid"/>
+  <line x1="580" y1="90" x2="580" y2="400" class="grid"/>
+
+  <!-- Fruit cluster -->
+  <ellipse cx="230" cy="170" rx="150" ry="80" class="cluster-hint" stroke="#34A853"/>
+  <text x="230" y="100" text-anchor="middle" fill="#34A853" font-size="13" font-weight="600" letter-spacing="1">FRUITS</text>
+
+  <circle cx="180" cy="155" r="8" fill="#34A853"/>
+  <text x="195" y="152" class="pt-text">mango</text>
+
+  <circle cx="250" cy="190" r="8" fill="#34A853"/>
+  <text x="265" y="187" class="pt-text">guava</text>
+
+  <circle cx="220" cy="205" r="8" fill="#34A853"/>
+  <text x="235" y="225" class="pt-text">papaya</text>
+
+  <circle cx="290" cy="160" r="8" fill="#34A853"/>
+  <text x="305" y="157" class="pt-text">apple (fruit)</text>
+
+  <!-- Tech / phones cluster -->
+  <ellipse cx="680" cy="320" rx="135" ry="65" class="cluster-hint" stroke="#4285F4"/>
+  <text x="680" y="260" text-anchor="middle" fill="#4285F4" font-size="13" font-weight="600" letter-spacing="1">PHONES / TECH</text>
+
+  <circle cx="640" cy="310" r="8" fill="#4285F4"/>
+  <text x="555" y="307" text-anchor="end" class="pt-text">Apple iPhone</text>
+
+  <circle cx="720" cy="335" r="8" fill="#4285F4"/>
+  <text x="735" y="332" class="pt-text">Samsung Galaxy</text>
+
+  <circle cx="680" cy="355" r="8" fill="#4285F4"/>
+  <text x="695" y="375" class="pt-text">Pixel</text>
+
+  <!-- Vehicles cluster -->
+  <ellipse cx="470" cy="345" rx="90" ry="45" class="cluster-hint" stroke="#EA4335"/>
+  <text x="470" y="395" text-anchor="middle" fill="#EA4335" font-size="13" font-weight="600" letter-spacing="1">VEHICLES</text>
+
+  <circle cx="450" cy="340" r="8" fill="#EA4335"/>
+  <text x="405" y="337" text-anchor="end" class="pt-text">car</text>
+
+  <circle cx="495" cy="355" r="8" fill="#EA4335"/>
+  <text x="510" y="352" class="pt-text">scooter</text>
+
+  <!-- Caption hint -->
+  <text x="450" y="440" text-anchor="middle" class="caption">note: "apple" lives in two places — the model disambiguates by context</text>
+</svg>
