@@ -104,7 +104,7 @@ psql postgresql://postgres:demo@localhost:5433/demo -c "SELECT count(*) FROM pla
 ## Phone-A-Friend Contacts
 
 - Speaker on-site
-- Event: BuildSpace 2.0 @ IGDTUW
+- Event: Build with AI · GDG Cloud New Delhi
 - Date/time: 2026-04-25, 10:00 AM
 
 ---

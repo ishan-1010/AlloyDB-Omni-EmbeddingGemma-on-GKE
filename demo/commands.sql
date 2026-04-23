@@ -1,5 +1,5 @@
 -- =========================================================
--- BuildSpace 2.0 × GDG IGDTUW — Live demo commands
+-- Build with AI · GDG Cloud New Delhi — Live demo commands
 -- Source of truth: docs/HANDBOOK.md + docs/ACTUAL_HERO_RESULTS.md
 --
 -- Prereqs: psql'd into `demo` database on AlloyDB Omni via

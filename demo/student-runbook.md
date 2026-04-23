@@ -1,6 +1,6 @@
 # Student runbook — 45-min workshop companion
 
-**For:** IGDTUW students attending the BuildSpace 2.0 × GDG workshop on 25 April.
+**For:** students attending the Build with AI workshop by GDG Cloud New Delhi on 25 April.
 **What you'll do:** Follow the real [AlloyDB Omni + EmbeddingGemma codelab](https://codelabs.developers.google.com/alloydb-omni-gke-embeddings) on your own GKE cluster. The speaker runs a local shadow setup on stage so you can see expected outputs at each checkpoint.
 
 ---

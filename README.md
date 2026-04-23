@@ -1,4 +1,4 @@
-# BuildSpace 2.0 × GDG IGDTUW — AlloyDB Omni + GKE + Embeddings
+# Build with AI · GDG Cloud New Delhi — AlloyDB Omni + GKE + Embeddings
 
 Workshop kit for a 45-minute hands-on session on **AlloyDB Omni, GKE, and vector search**, built on top of the official [Google Codelab](https://codelabs.developers.google.com/alloydb-omni-gke-embeddings).
 

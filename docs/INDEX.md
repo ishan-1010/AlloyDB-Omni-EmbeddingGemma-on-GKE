@@ -1,6 +1,6 @@
 # Workshop Documentation Index
 
-**Event:** BuildSpace 2.0 @ IGDTUW
+**Event:** Build with AI · GDG Cloud New Delhi
 **Date:** 2026-04-25, 10:00 AM IST (45 min)
 **Codelab:** AlloyDB Omni + EmbeddingGemma on GKE
 
