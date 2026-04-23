@@ -1,4 +1,4 @@
-# Build with AI · GDG Cloud New Delhi — AlloyDB Omni + GKE + Embeddings
+# Build with AI · GDG Cloud New Delhi — AlloyDB Omni + GKE + Embeddings (Ishan Katoch)
 
 Workshop kit for a 45-minute hands-on session on **AlloyDB Omni, GKE, and vector search**, built on top of the official [Google Codelab](https://codelabs.developers.google.com/alloydb-omni-gke-embeddings).
 
@@ -11,10 +11,7 @@ Workshop kit for a 45-minute hands-on session on **AlloyDB Omni, GKE, and vector
 
 ```
 .
-├── slides/
-│   ├── index.html              # Reveal.js deck — 30 slides + Hinglish speaker notes
-│   ├── custom.css              # GDG-themed dark style
-│   └── assets/                 # diagrams, QR codes
+├── screenshots/
 ├── docs/
 │   ├── HANDBOOK.md             # ⭐ codelab-style walkthrough with exact commands
 │   ├── TRIAL_ACCOUNT_GUIDE.md  # the 3 patches that make the codelab fit a trial GCP account
@@ -57,24 +54,3 @@ This kit documents the three fixes, captures real output from an end-to-end run 
 Full reasoning in [docs/TRIAL_ACCOUNT_GUIDE.md](docs/TRIAL_ACCOUNT_GUIDE.md).
 
 ---
-
-## Presenting the deck
-
-1. Open [slides/index.html](slides/index.html) in any modern browser.
-2. Press **`s`** for speaker-notes view (notes are in Hinglish).
-3. Arrow keys to navigate. `o` for overview, `f` for fullscreen, `b` to blank the screen.
-4. **Export to PDF:** open `slides/index.html?print-pdf` in Chrome → Cmd+P → Save as PDF, landscape, margins none, background graphics on.
-
----
-
-## Credits
-
-- Based on the [AlloyDB Omni + EmbeddingGemma on GKE Codelab](https://codelabs.developers.google.com/alloydb-omni-gke-embeddings) (© Google).
-- Local shadow demo uses [pgvector](https://github.com/pgvector/pgvector) + [sentence-transformers](https://www.sbert.net/).
-- Deck built with [Reveal.js](https://revealjs.com).
-
----
-
-## License
-
-The workshop materials in this repo (slides, docs, scripts) are released under MIT. The underlying codelab content and Cymbal dataset are © Google and used under the codelab's terms.
