@@ -1,6 +1,6 @@
-# Actual Hero Query Results — 2026-04-23 Dry Run
+# Actual Hero Query Results — 2026-04-23 + 2026-04-24 Dry Runs
 
-Captured from the dry-run cluster on the morning of 23 Apr after the overnight embedding generation completed successfully. These are the **real** numbers — not placeholders.
+Captured from two separate dry-run clusters: the first on 23 Apr after overnight embedding generation, and a full end-to-end re-validation on 24 Apr (T-1 day before the session) using the corrected operator-1.6.3 recipe (custom provider + TEI's OpenAI-compat endpoint + openai_text_embedding_* transforms). Both runs produced byte-identical top-5 results — the embedding function is deterministic, and the execution plan timing is stable within ±20%. These are the **real** numbers — not placeholders.
 
 ---
 
@@ -84,7 +84,14 @@ Planning Time:   20,153.978 ms   ← TIME SPENT CALLING TEI TO EMBED THE QUERY T
 Execution Time:       6.641 ms   ← ACTUAL VECTOR SEARCH + JOIN + SORT
 ```
 
-**The story:** 99.97% of the 20.5-second response time was the HTTP call to TEI to embed `"fruit trees"`. Once the query vector existed, AlloyDB searched all 941 vectors + joined + sorted in **6.6 ms**. This is the core production lesson: *cache query embeddings* OR *embed at write-time, not read-time*.
+**24 Apr re-validation — same query, fresh cluster:**
+
+```
+Planning Time:   20,141.624 ms
+Execution Time:       9.044 ms    ← slightly more DB work with store_id + inventory joins
+```
+
+**The story:** 99.95% of the 20-second response time was the HTTP call to TEI to embed `"fruit trees..."`. Once the query vector existed, AlloyDB searched all 941 vectors + joined across 3 tables + sorted top-5 in **~9 ms**. Execution plan used Bitmap Index Scan on `walmart_inventory_pkey` for store_id filter (830 of 941 rows kept), two hash joins, and top-N heapsort with 26 kB memory. This is the core production lesson: *cache query embeddings* OR *embed at write-time, not read-time*. Never in a user-facing request path with cold model calls.
 
 ---
 

@@ -295,9 +295,11 @@ First reconcile pulls a ~2 GB image + downloads EmbeddingGemma weights from HF. 
 
 ---
 
-## 10. Register the model in AlloyDB
+## 10. Register the model in AlloyDB **[OPERATOR-DRIFT]**
 
 This teaches the database that `google_ml.embedding('embedding-gemma', 'text')` should be an HTTP POST to the TEI service.
+
+> **Operator version matters.** AlloyDB Omni operator `1.6.3` (what we run) removed the `tei_text_embedding_*_transform` helpers that older codelab versions referenced. It also made `google_ml.create_model` a **procedure** (`CALL`, not `SELECT`). Working pattern for 1.6.x: use TEI's **OpenAI-compatible endpoint** (`/v1/embeddings`) with `model_provider => 'custom'` and the built-in `openai_text_embedding_*_transform` functions — since TEI's OpenAI-compat response shape matches OpenAI exactly.
 
 ```bash
 kubectl exec -i "$DBPOD" -n default -c database -- \
@@ -307,53 +309,110 @@ CREATE EXTENSION IF NOT EXISTS google_ml_integration CASCADE;
 ALTER SYSTEM SET google_ml_integration.enable_model_support = 'on';
 SELECT pg_reload_conf();
 
-SELECT google_ml.create_model(
-  model_id          => 'embedding-gemma',
-  model_request_url => 'http://tei-service.default.svc.cluster.local/embed',
-  model_provider    => 'custom',
-  model_type        => 'text_embedding',
-  model_in_transform_fn => 'google_ml.tei_text_embedding_input_transform',
-  model_out_transform_fn => 'google_ml.tei_text_embedding_output_transform'
+CALL google_ml.create_model(
+  model_id               => 'embedding-gemma',
+  model_request_url      => 'http://tei-service.default.svc.cluster.local/v1/embeddings',
+  model_provider         => 'custom',
+  model_type             => 'text_embedding',
+  model_qualified_name   => 'google/embeddinggemma-300m',
+  model_in_transform_fn  => 'google_ml.openai_text_embedding_input_transform',
+  model_out_transform_fn => 'google_ml.openai_text_embedding_output_transform'
 );
 SQL
 ```
 
-The two `tei_text_embedding_{input,output}_transform` functions are built into `google_ml_integration` and they handle the TEI-specific JSON request/response shape. You don't write them.
+**Why this shape works (operator 1.6.3, validated 2026-04-24):**
 
-> **Note:** The speedrun script registers the model as `embedding-gemma` (with hyphen). The live slides show the query as `google_ml.embedding('embeddinggemma', ...)`. Pick the one that matches what you registered. The real run captured in `ACTUAL_HERO_RESULTS.md` worked with the registered name.
+- **`/v1/embeddings`** — TEI's OpenAI-compat endpoint. Returns `{"object":"list","data":[{"embedding":[...]}]}`, identical to OpenAI's shape. TEI's native `/embed` returns a raw `[[floats]]` array that no built-in transform currently unwraps.
+- **`model_provider => 'custom'`** — not `'open_ai'`, because the `open_ai` provider has a hardcoded URL validator requiring the `api.openai.com` domain. `'custom'` skips that check.
+- **`model_provider => 'hugging_face'`** also fails — it expects the HF Inference Endpoints response shape, not TEI's.
+- **`openai_text_embedding_*_transform`** — ship with `google_ml_integration`. They parse OpenAI-shaped JSON. Work unchanged against TEI's OpenAI-compat output.
+
+**Verify the model actually calls TEI:**
+
+```bash
+kubectl exec -i "$DBPOD" -n default -c database -- \
+  psql "postgresql://postgres:VeryStrongPassword@localhost:5432/demo?sslmode=require" \
+  -c "SELECT left(google_ml.embedding('embedding-gemma', 'hello world')::text, 120) AS sample;"
+```
+
+Expected: `{-0.21454078,0.0266105,0.06666797,...` — floats coming through `google_ml.embedding()`.
+
+### If you need to re-register
+
+`create_model` errors on duplicate `model_id`. Drop first:
+
+```sql
+CALL google_ml.drop_model('embedding-gemma');
+```
+
+### Common errors on this step
+
+| Error | Cause | Fix |
+|---|---|---|
+| `is a procedure ... use CALL` | You used `SELECT google_ml.create_model(...)` | Switch to `CALL` (the AlloyDB API changed between 1.2.x and 1.6.x) |
+| `Invalid model_in_transform_fn: google_ml.tei_text_embedding_input_transform` | Operator 1.6.3 no longer ships TEI-specific transforms | Use `openai_*_transform` against `/v1/embeddings` (the recipe above) |
+| `Invalid request url ... for provider OpenAI. Please use ... api.openai.com/` | You used `model_provider => 'open_ai'` with a non-OpenAI URL | Switch to `model_provider => 'custom'` |
+| `invalid input syntax for type json ... Token "(" is invalid` | Registered with `hugging_face` provider against TEI's `/embed` endpoint — response shape mismatch | Recipe above (custom + /v1/embeddings + openai transforms) |
 
 ---
 
 ## 11. Load the Cymbal schema + data
 
-All three CSVs live in a public GCS bucket. `gcloud storage cp` into the pod's `/tmp`, then `\copy` from psql.
+All four files (one schema + three CSVs) live in a public GCS bucket. The `database` container inside the AlloyDB pod has `psql` but **no `gcloud`** — so we download on Cloud Shell, copy into the pod with `kubectl cp`, then `\copy` from psql.
 
 ```bash
+# Phase 1: Download on Cloud Shell (where gcloud lives)
+gcloud storage cp gs://cloud-training/gcc/gcc-tech-004/cymbal_demo_schema.sql /tmp/
+gcloud storage cp gs://cloud-training/gcc/gcc-tech-004/cymbal_products.csv    /tmp/
+gcloud storage cp gs://cloud-training/gcc/gcc-tech-004/cymbal_inventory.csv   /tmp/
+gcloud storage cp gs://cloud-training/gcc/gcc-tech-004/cymbal_stores.csv      /tmp/
+
+# Phase 2: Copy into the DB pod's /tmp (-c database targets the Postgres container)
+kubectl cp /tmp/cymbal_demo_schema.sql default/$DBPOD:/tmp/cymbal_demo_schema.sql -c database
+kubectl cp /tmp/cymbal_products.csv    default/$DBPOD:/tmp/cymbal_products.csv    -c database
+kubectl cp /tmp/cymbal_inventory.csv   default/$DBPOD:/tmp/cymbal_inventory.csv   -c database
+kubectl cp /tmp/cymbal_stores.csv      default/$DBPOD:/tmp/cymbal_stores.csv      -c database
+
+# Phase 3: Load from psql inside the pod
 kubectl exec -i "$DBPOD" -n default -c database -- \
   psql "postgresql://postgres:VeryStrongPassword@localhost:5432/demo?sslmode=require" \
   -v ON_ERROR_STOP=1 <<'SQL'
 CREATE EXTENSION IF NOT EXISTS vector;
-
-\! gcloud storage cp gs://cloud-training/gcc/gcc-tech-004/cymbal_demo_schema.sql /tmp/
 \i /tmp/cymbal_demo_schema.sql
-
-\! gcloud storage cp gs://cloud-training/gcc/gcc-tech-004/cymbal_products.csv /tmp/
-\! gcloud storage cp gs://cloud-training/gcc/gcc-tech-004/cymbal_inventory.csv /tmp/
-\! gcloud storage cp gs://cloud-training/gcc/gcc-tech-004/cymbal_stores.csv /tmp/
-
+SET search_path = public;                -- [CRITICAL] pg_dump blanks search_path in line 12; reset so unqualified \copy resolves
 \copy cymbal_products  FROM '/tmp/cymbal_products.csv'  WITH (FORMAT csv, HEADER true);
 \copy cymbal_inventory FROM '/tmp/cymbal_inventory.csv' WITH (FORMAT csv, HEADER true);
 \copy cymbal_stores    FROM '/tmp/cymbal_stores.csv'    WITH (FORMAT csv, HEADER true);
 SQL
 ```
 
+**Why the `SET search_path = public;` is non-optional:** The schema SQL file is pg_dump output. Line 12 of it is `SELECT pg_catalog.set_config('search_path', '', false);` — pg_dump's standard opener that blanks search_path so its fully-qualified `public.tablename` references work during restore. That setting persists for the rest of your psql session, so subsequent unqualified `\copy cymbal_products` fails with `relation "cymbal_products" does not exist`. One line resets it.
+
+**Why not the old `\! gcloud storage cp ...` pattern:** `\!` shells out to the pod's shell, but the `database` container is a minimal Postgres image with no gcloud SDK. That errors with `sh: 1: gcloud: not found`. Download-on-host + `kubectl cp` is the portable fix.
+
 After this you have **941 rows in `cymbal_products`** (US retail products — the upstream codelab dataset).
+
+**Verify:**
+
+```bash
+kubectl exec -i "$DBPOD" -n default -c database -- \
+  psql "postgresql://postgres:VeryStrongPassword@localhost:5432/demo?sslmode=require" \
+  -c "SELECT
+        (SELECT count(*) FROM cymbal_products)  AS products,
+        (SELECT count(*) FROM cymbal_inventory) AS inventory,
+        (SELECT count(*) FROM cymbal_stores)    AS stores;"
+```
+
+Expect 941 products.
 
 ---
 
 ## 12. Generate embeddings (the slow step)
 
-One `INSERT ... SELECT` that calls the model once per row. CPU-only inference on 941 rows = **~8 minutes**. You cannot speed this up without GPU nodes.
+One `INSERT ... SELECT` that calls the model once per row, serially. CPU-only inference on `e2-standard-4` takes **~15–25 minutes for 941 rows** (measured live: ~1.3 sec per embedding, variance 0.4–5 sec depending on product-description length). You cannot speed this up without GPU nodes or parallel embedding (neither is in scope here).
+
+Older versions of this handbook said "~8 min" — that figure is unreliable on trial-account CPU nodes. If you're under a 45-min session budget, expect the INSERT to continue past the session end for students running hands-on. The **shadow-demo pattern** solves this: speaker shows a pre-embedded cluster for the hero query, students' `INSERT` keeps running in the background and they see their own results later.
 
 ```bash
 kubectl exec -i "$DBPOD" -n default -c database -- \
@@ -485,28 +544,73 @@ Execution Time:       6.641 ms   ← ACTUAL VECTOR SEARCH + JOIN + SORT
 
 ## 16. MANDATORY teardown
 
-**A running cluster costs ~$0.40/hour.** Overnight = $10. Don't be the person who forgets.
+**A running cluster costs ~$0.40/hour.** Overnight = $10. **Don't be the person who forgets.**
+
+### Why the obvious `clusters delete` isn't enough
+
+GKE cluster delete removes the nodes, boot disks, and control plane — but **NOT everything**. These survive a naive delete:
+
+1. **Persistent Volumes (PVs)** backing PVCs with `reclaimPolicy: Retain` — AlloyDB's DataDisk (20 Gi pd-standard) and operator's control-plane disks (2–10 Gi pd-balanced). ~8 disks per AlloyDB DBCluster.
+2. **Load balancer forwarding rules** from `al-my-omni-rw-elb` LoadBalancer service — ~$18/month each if orphaned.
+3. **Static IP addresses** (only if you reserved one — we don't in this recipe, but defensive check).
+
+### Safe teardown order — delete apps first, then cluster
+
+Doing this *in this order* lets the operator release resources cleanly before the cluster evaporates under it:
 
 ```bash
-# 1. Delete the cluster (kills the nodes + load balancer automatically)
-gcloud container clusters delete alloydb-ai-gke \
-  --region=us-central1 --project=$PROJECT_ID --quiet
+# 1. Uninstall apps — lets their controllers release LBs + PVs
+kubectl delete deployment tei-deployment --ignore-not-found
+kubectl delete service    tei-service    --ignore-not-found
+kubectl delete dbcluster  my-omni        -n default --ignore-not-found --timeout=60s
 
-# 2. Sanity check: look for PDs the cluster left behind
-gcloud compute disks list --project=$PROJECT_ID
+# 2. Uninstall the AlloyDB operator (before the cluster — prevents orphaning)
+helm uninstall alloydbomni-operator -n alloydb-omni-system 2>/dev/null || true
+kubectl delete namespace alloydb-omni-system --ignore-not-found --timeout=60s
 
-# 3. Delete any disks that match the cluster name (pd-standard data disks
-#    for AlloyDB sometimes outlive the cluster when the operator is uninstalled
-#    in the wrong order)
-gcloud compute disks delete DISK_NAME \
-  --region=us-central1 --project=$PROJECT_ID --quiet
+# 3. Now delete the cluster itself
+gcloud container clusters delete "$CLUSTER_NAME" \
+  --region="$LOCATION" --project="$PROJECT_ID" --quiet
 
-# 4. Final check — should return empty
-gcloud container clusters list --project=$PROJECT_ID
-gcloud compute instances list --project=$PROJECT_ID
+# 4. Sweep orphan disks (PVs whose PVCs were never released)
+#    Filter "-users:*" catches disks that aren't attached to any VM
+gcloud compute disks list --project="$PROJECT_ID" --filter="-users:*"
+
+# Delete each orphan individually, or batch-delete all at once:
+for row in $(gcloud compute disks list --project="$PROJECT_ID" --filter="-users:*" \
+             --format="value(name,zone)"); do
+  name=$(echo "$row" | awk '{print $1}')
+  zone=$(echo "$row" | awk '{print $2}')
+  [[ -n "$name" && -n "$zone" ]] && \
+    gcloud compute disks delete "$name" --zone="$zone" --project="$PROJECT_ID" --quiet
+done
+
+# 5. Sweep orphan forwarding rules (LBs that outlived the Service)
+gcloud compute forwarding-rules list --project="$PROJECT_ID"
+# For each entry that shouldn't be there:
+#   gcloud compute forwarding-rules delete <NAME> --region="$LOCATION" --project="$PROJECT_ID" --quiet
+
+# 6. Final check — all three should return "Listed 0 items."
+gcloud container clusters list --project="$PROJECT_ID"
+gcloud compute instances list --project="$PROJECT_ID"
+gcloud compute disks list     --project="$PROJECT_ID" --filter="-users:*"
 ```
 
-Also: set a billing alert at $4 in [GCP Billing → Budgets](https://console.cloud.google.com/billing/budgets) before your first `clusters create`. Cheap insurance against your own forgetfulness.
+### Pre-run insurance — set a billing alert BEFORE step 2
+
+This is the 30-second move that would prevent every "GDG got a ₹3000 bill" story:
+
+1. Open [GCP Billing → Budgets & alerts](https://console.cloud.google.com/billing/budgets)
+2. Create a budget of **$5** (or ₹400) for this project
+3. Email alerts at 50%, 90%, 100%
+
+You'll get an email the moment the project crosses $2.50. Trial credit caps at $300 anyway, but the alert tells you *why* spend is climbing before it's too late.
+
+### Real-world example of why safe-order matters
+
+Running `gcloud container clusters delete` without first deleting the DBCluster CR has been observed to leave 8 persistent disks orphaned (6× pd-balanced, 2× pd-standard 20 GB). At GCP's PD prices that's ~$5/month per cluster-tear-down done wrong. Run the workshop 3 times, forget each time, and you have ₹1200+ of invisible persistent-disk bills accumulating. Plus one orphan forwarding rule = ~₹1500 on top. That's exactly how a single workshop turns into a ₹3000 bill without anyone realizing.
+
+The safe-order teardown above closes every known orphan path.
 
 ---
 
