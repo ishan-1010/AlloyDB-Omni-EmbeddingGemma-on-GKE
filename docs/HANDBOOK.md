@@ -30,6 +30,138 @@
 
 Appendices: [A — Every trial-account deviation](#a--every-trial-account-deviation) · [B — Failure modes + one-line fixes](#b--failure-modes--one-line-fixes) · [C — Real cost data](#c--real-cost-data)
 
+Before the steps: **[Concepts primer](#concepts-primer--the-mental-model-you-need)** — if any of kubectl/pod/operator/embedding feels fuzzy, read that first.
+
+---
+
+## Concepts primer — the mental model you need
+
+This section explains *what the pieces actually are* before you start running commands. If you already know Kubernetes + embeddings, skim. If not, read linearly — each concept builds on the previous one.
+
+### Containers, images, and pods
+
+- **Container image** — a frozen snapshot of software: OS libraries, a binary, and its config, all packaged as a portable file. Think of it as "a computer's full install, compressed into a zip". Example: `ghcr.io/huggingface/text-embeddings-inference:cpu-latest`.
+- **Container** — a *running instance* of an image. One image can be run many times → many containers.
+- **Pod (Kubernetes)** — the smallest unit Kubernetes manages. A pod holds one or more containers that share a network + storage. 99% of pods have one container; sidecars (monitoring, proxies) are the exception. You can think of a pod as "one logical app, possibly made of helper containers".
+
+### Kubernetes (K8s) — container orchestration
+
+Kubernetes is a control system for running containers across many machines. You describe what you want ("run 3 copies of this pod, keep it available, restart if crashed"), K8s continuously makes reality match your description. Built by Google, open source, industry-standard since ~2017.
+
+**Why not just `docker run`?** Because Docker runs on *one* machine, doesn't restart crashed containers, doesn't handle networking across machines, doesn't do rolling updates. K8s does all of that.
+
+### GKE (Google Kubernetes Engine) — managed K8s
+
+GKE = Kubernetes, but Google runs the hard parts for you:
+- Control plane (API server, etcd, scheduler) — Google's problem
+- Worker nodes (VMs running your pods) — Google provisions, you pay per hour
+- Auto-repair, auto-upgrade, networking, load balancers — Google
+- You just declare workloads and consume
+
+### Cluster, nodes, namespaces
+
+- **Cluster** — one Kubernetes installation. Has one control plane + 1-N worker nodes. "The cluster" = the unit you interact with.
+- **Node** — one VM (or physical machine) that runs pods. Our cluster has 3 nodes (`e2-standard-4` VMs, 4 vCPU / 16 GiB RAM each). Nodes are interchangeable — Kubernetes schedules pods onto whichever has room.
+- **Namespace** — a logical subfolder inside a cluster. Used for separation: `default` for your workloads, `kube-system` for Kubernetes internals, `alloydb-omni-system` for the AlloyDB operator. Namespaces aren't security boundaries, just organization + scoping.
+
+### kubectl — the Kubernetes CLI
+
+`kubectl` is how you talk to the cluster. You run `kubectl <verb> <resource>` and it talks to the cluster's API over HTTPS. Examples:
+
+- `kubectl get pods -n default` — list pods in the default namespace
+- `kubectl apply -f my-omni.yaml` — submit a YAML describing what you want
+- `kubectl exec -i POD -c database -- psql ...` — run a command inside a specific container of a specific pod (like SSH, but for pods)
+- `kubectl logs -l app=tei-server` — read logs from matching pods
+
+**Mental model:** kubectl is just an HTTP client that speaks the Kubernetes REST API, with handy shortcuts.
+
+### Declarative config + YAML
+
+You don't tell Kubernetes "create this pod" imperatively. You submit a YAML file describing the *desired state* ("I want a Deployment of 3 replicas running image X, exposed via Service Y"). Kubernetes' controllers reconcile reality toward the spec continuously. This is what makes it self-healing — if a node dies, the controller spawns a replacement pod on another node, because reality drifted from spec.
+
+### Deployments, Services, Secrets, PersistentVolumeClaims
+
+The workshop uses these built-in Kubernetes resource types:
+
+- **Deployment** — "I want N replicas of this pod running, keep them running, update them gracefully when I change the image". Used for TEI.
+- **Service** — a stable DNS name + IP that load-balances to pods matching a label selector. Pods come and go (new IPs each time); Service endpoint doesn't change. Used for `tei-service` so AlloyDB can always reach TEI at `tei-service.default.svc.cluster.local`.
+- **Secret** — key-value store for sensitive data (HF token, DB passwords). Mounted into pods as environment variables or files. Base64-encoded at rest (not encrypted by default — it's access-controlled, not secure-by-cryptography).
+- **PersistentVolumeClaim (PVC)** — a request for storage. "I want 20 GiB of pd-standard disk". Kubernetes provisions a matching PersistentVolume (backed by a GCP persistent disk) and mounts it into the pod. Survives pod restarts — your database data lives here.
+
+### Custom Resources + Operators (CRDs) — the advanced bit
+
+Kubernetes is extensible. Anyone can define new *types* of resources (like a new noun: `DBCluster`) and write a controller to reconcile them. These are called Custom Resources:
+
+- **CRD (Custom Resource Definition)** — the *schema* for a new resource type. "A DBCluster has these fields: `databaseVersion`, `primarySpec`, etc." Install a CRD once per cluster.
+- **Custom Resource (CR)** — an *instance* of a CRD. E.g., your `my-omni` DBCluster YAML is a CR.
+- **Operator** — a long-running controller inside the cluster that watches CRs of a type and makes reality match. The AlloyDB Omni operator watches `DBCluster` resources, spawns the right pods, manages backups, handles failover. Think of it as "a robot DBA living inside your cluster".
+
+This is how a single short YAML (`kind: DBCluster`) becomes "Postgres running across multiple containers with cert-managed TLS". The operator does all the hard work behind the scenes.
+
+### Helm — the package manager
+
+Helm is to Kubernetes what `apt`/`brew` is to Linux/macOS. Packages = "charts" (templated YAMLs with knobs). The AlloyDB Omni operator ships as a Helm chart; one `helm install` drops 20+ Kubernetes resources into your cluster (CRDs, RBAC rules, controller Deployment, ServiceAccount, etc.). You could write all those YAMLs yourself; Helm abstracts the mess.
+
+### AlloyDB Omni vs AlloyDB (managed)
+
+Google has two flavours:
+
+- **AlloyDB (managed)** — Google runs it on GCP. You just consume it. Per-hour bill, GCP-only.
+- **AlloyDB Omni** — same engine, you run it anywhere (your laptop, any Kubernetes, any VM). Free for dev/testing. We use this today.
+
+Both are PostgreSQL-wire-compatible (100% drop-in). On top of stock Postgres they add:
+- **ScaNN vector index** — Google Research's Approximate Nearest Neighbor search. Lets you scale vector queries to millions of rows.
+- **Columnar accelerator** — speeds up analytical queries.
+- **`google_ml.*` functions** — SQL-level wrappers around ML endpoints (this is the step-10 magic).
+
+### pgvector — the open-source vector type for Postgres
+
+Open-source Postgres extension that adds:
+- A new column type: `vector(N)` — stores N floats.
+- Distance operators: `<->` (Euclidean / L2), `<=>` (cosine), `<#>` (negative inner product).
+- Index types: HNSW, IVFFlat (approximate nearest neighbor indexes).
+
+AlloyDB Omni includes pgvector as a dependency. Our `cymbal_embedding` table has an `embedding vector(768)` column powered by pgvector.
+
+### Embeddings + EmbeddingGemma + TEI
+
+- **Embedding** — a way to represent text (or images, audio) as a list of numbers such that "similar things → similar numbers". 768 numbers in our case.
+- **EmbeddingGemma** — Google's open-source text embedding model. 308M parameters, produces 768-dim vectors. Smaller than most LLMs (GPT-3 is 175B parameters = 570× bigger). Runs on CPU, ~2 GB RAM.
+- **TEI (Text Embeddings Inference)** — HuggingFace's Rust-based server for running embedding models. You give it an HTTP endpoint; it loads the model weights, serves a `POST /v1/embeddings` API that returns vectors. Stateless, horizontally scalable.
+
+Together: TEI is the **process** serving the model; EmbeddingGemma is the **model weights** it loads. TEI without a model = useless server; model without TEI = unusable weight file.
+
+### HuggingFace + HF_TOKEN
+
+HuggingFace is "GitHub for ML models" — they host Gemma, BERT, Llama, thousands of others. Some models are *gated*: you need an account + accepted license + read token to download them. `HF_TOKEN` in our workshop is that read token. TEI uses it to download the EmbeddingGemma weights at pod startup.
+
+### cert-manager
+
+Kubernetes doesn't come with TLS-certificate issuance built in. cert-manager is a Kubernetes controller that automates certificate lifecycle (issue from Let's Encrypt / internal CA / AlloyDB operator, rotate before expiry, mount into pods). The AlloyDB Omni operator requires cert-manager to exist in the cluster before it installs, because the operator needs TLS for its webhook and for pod-to-pod AlloyDB traffic.
+
+### `google_ml.create_model` + `google_ml.embedding` — SQL-level ML calls
+
+AlloyDB Omni's `google_ml_integration` extension teaches Postgres to make HTTP calls to ML endpoints, from inside SQL.
+
+- **`CALL google_ml.create_model(...)`** — registers a named endpoint. You tell AlloyDB "here's a URL, here's what shape of request/response, here's a nickname for it" — once. It stores this in metadata.
+- **`SELECT google_ml.embedding('model_name', 'input text')`** — runs the model on the input, inside any SQL query. Internally it makes an HTTP POST, parses the JSON response (via transform functions), returns a `float[]` that you can cast to `vector(768)`.
+
+This is what lets you write:
+
+```sql
+SELECT * FROM products
+ORDER BY embedding <=> google_ml.embedding('embedding-gemma', 'user query')::vector
+LIMIT 5;
+```
+
+…and have the database call the ML server itself, no Python middleware needed.
+
+### One paragraph summary
+
+You run `gcloud` to create a **GKE cluster** (nodes = VMs). You use `kubectl` to install **cert-manager**, then the **AlloyDB Omni operator** (a controller that watches **DBCluster** custom resources). You submit a DBCluster YAML; the operator spawns a Postgres pod with pgvector + google_ml extensions. Separately you deploy a **TEI server pod** loading **EmbeddingGemma**. Postgres and TEI talk to each other via cluster-internal DNS (`tei-service.default.svc.cluster.local`). You register TEI with Postgres using `google_ml.create_model` (one SQL procedure call). From then on, SQL queries can embed text and do cosine-distance search in one statement. When done, `gcloud container clusters delete` tears it all down (mostly — check the teardown section for orphan-disk gotchas).
+
+With that mental model in place, the numbered steps below make sense: each one is setting up one piece of that picture.
+
 ---
 
 ## 0. Prereqs
@@ -51,6 +183,8 @@ gcloud config set project YOUR_PROJECT_ID      # confirm you're in the right pro
 
 ## 1. Enable APIs
 
+> **What this step is doing:** GCP APIs are gated — you must *enable* each one on your project before it accepts requests. We enable `container.googleapis.com` (lets you create GKE clusters) and `compute.googleapis.com` (lets you create VMs, disks, networks — the building blocks GKE uses). Enabling is free; only the resources you subsequently create bill you.
+
 ```bash
 gcloud services enable container.googleapis.com compute.googleapis.com
 ```
@@ -60,6 +194,15 @@ Takes 30 sec. Container Engine + Compute are the only two APIs needed end-to-end
 ---
 
 ## 2. Create the GKE cluster **[TRIAL-FIX]**
+
+> **What this step is doing:** Provisioning a GKE cluster = asking Google to spin up a managed Kubernetes control plane + 3 VMs (our worker nodes), put them on an internal network, and configure the control plane to accept your kubectl requests. After this, you have an empty cluster — no pods running yet. Total: ~8 min. Billing starts the moment nodes are up (~$0.40/hr).
+>
+> Flags decoded:
+> - `--region=us-central1` — regional cluster, 1 node per zone × 3 zones = 3 nodes (highly available)
+> - `--machine-type=e2-standard-4` — 4 vCPU / 16 GiB per node (cheapest tier that fits AlloyDB + TEI)
+> - `--release-channel=rapid` — get the newest Kubernetes version (needed for some AlloyDB operator features)
+> - `--workload-pool` — enables Workload Identity, required for the operator Helm install to authenticate
+> - `--disk-type=pd-standard --disk-size=50` — **[TRIAL-FIX]** use HDD-backed boot disks to stay under the 250 GB SSD quota cap
 
 **Codelab default fails on a trial account** with `Quota 'SSD_TOTAL_GB' exceeded. Limit: 250.0`. Trial accounts cap regional SSD at 250 GB; a default 3-node cluster wants ~300 GB. Fix: use `pd-standard` boot disks and cap size.
 
@@ -86,6 +229,10 @@ gcloud container clusters create "$CLUSTER_NAME" \
 
 ## 3. Wire kubectl
 
+> **What this step is doing:** Your cluster has an API endpoint (a private IP + TLS cert). `kubectl` needs to know (a) the endpoint URL, (b) how to authenticate to it. `get-credentials` fetches both and writes them into `~/.kube/config`. After this, every subsequent `kubectl` command in this shell hits *your* cluster.
+>
+> `kubectl get nodes` is a sanity check — it asks the API server "list all nodes" and confirms you can reach and authenticate to the cluster.
+
 ```bash
 gcloud container clusters get-credentials "$CLUSTER_NAME" --region="$LOCATION"
 kubectl get nodes
@@ -96,6 +243,8 @@ You should see 3 nodes in `Ready` status. If you see `gke-gcloud-auth-plugin not
 ---
 
 ## 4. Install cert-manager
+
+> **What this step is doing:** Installing cert-manager = applying a YAML that contains ~30 Kubernetes resources (CRDs for `Certificate`/`Issuer`, a controller Deployment, a webhook, RBAC rules). After this, the cluster has a new capability: "anyone can request TLS certificates via `kind: Certificate` custom resources and cert-manager will issue them." We don't use cert-manager directly — we install it because the AlloyDB operator (next step) depends on it to issue its own TLS certs. Prerequisite plumbing.
 
 The AlloyDB Omni operator's webhook needs cert-manager for its TLS certs.
 
@@ -109,6 +258,8 @@ kubectl wait --for=condition=Available --timeout=300s deployment -n cert-manager
 ---
 
 ## 5. Install the AlloyDB Omni operator (Helm)
+
+> **What this step is doing:** The operator is a controller that lives in the cluster and knows how to manage AlloyDB Omni instances. Installing it via Helm = running a templated bundle of ~20 Kubernetes resources: a CRD (`DBCluster`), a Deployment (the controller pod), RBAC roles, a ServiceAccount, webhooks (validating incoming DBCluster YAMLs). After this step, your cluster understands the new noun "DBCluster" and has a robot watching for them. We don't create a DBCluster yet — we install the robot that *will* create one when we ask.
 
 The codelab pins operator `1.2.0`. We used whatever `gs://alloydb-omni-operator/latest` pointed to on 22 Apr — version `1.6.3`. Both work.
 
@@ -129,6 +280,12 @@ helm install alloydbomni-operator "alloydbomni-operator-${OPERATOR_VERSION}.tgz"
 ---
 
 ## 6. Deploy the DBCluster **[TRIAL-FIX]**
+
+> **What this step is doing:** Submitting a `DBCluster` YAML = handing the operator a declarative spec: *"I want Postgres 15.13, 1 CPU, 4 GiB RAM, a 20 GiB data disk, with the google_ml extension enabled, accessible via an internal load balancer."* The operator's reconciliation loop reads this, provisions the pod(s), attaches the disk (via a PVC), mounts the password Secret, sets up TLS, and moves the DBCluster's `status.phase` to `DBClusterReady` when everything is actually serving. YAML-to-running-database = ~4 min.
+>
+> Two things get created here:
+> 1. A **Secret** (`db-pw-my-omni`) holding the Postgres admin password, base64-encoded
+> 2. A **DBCluster** CR (`my-omni`) that references that Secret
 
 **Two codelab defaults fail on trial-account sized nodes:**
 
@@ -197,6 +354,10 @@ done
 
 ## 7. Create the `demo` database (hidden codelab assumption)
 
+> **What this step is doing:** The DBCluster gave you a Postgres *server* (with the `postgres` default database). The codelab's later steps assume a database named `demo` already exists — but nothing created it. So we run `CREATE DATABASE demo;` once. `kubectl exec` gets you a shell inside the `database` container, `psql` connects locally via the URI (with password embedded because heredoc stdin can't handle a password prompt), and we issue the CREATE. One-time setup.
+>
+> **Common gotcha on this step:** `Connection refused` if you run this immediately after `kubectl apply`. The pod is `Running` at the K8s level but Postgres inside is still booting (WAL recovery, etc.). Wait for `status.phase = DBClusterReady` (≈3–4 min after apply), not pod-Ready.
+
 The codelab's Step 6 silently assumes you are in a database called `demo` when it runs `CREATE EXTENSION vector;`. That database does NOT exist by default. Create it once:
 
 ```bash
@@ -215,6 +376,10 @@ kubectl exec -i "$DBPOD" -n default -c database -- \
 
 ## 8. Create the HuggingFace secret (**order matters**)
 
+> **What this step is doing:** TEI (next step) needs your HuggingFace token to download EmbeddingGemma (a gated model — license required). We don't want to hardcode the token in the TEI Deployment YAML; that's a security anti-pattern. Instead we create a Kubernetes Secret (named `hf-secret`) that stores the token, and the TEI pod spec will *reference* the Secret via `env.valueFrom.secretKeyRef`. The token never appears in YAML or logs.
+>
+> **Why the `--dry-run=client | kubectl apply` pattern:** makes the command idempotent — re-running updates the Secret instead of failing with "already exists". Safer in scripts.
+
 **Must be created BEFORE the TEI deployment**. If TEI is applied first, it sticks in `CreateContainerConfigError` with `Error: secret "hf-secret" not found` for 30+ minutes before you notice (because `kubectl wait` hides the reason behind a timeout).
 
 ```bash
@@ -228,6 +393,8 @@ The `--dry-run=client | kubectl apply` shape makes the command idempotent — re
 ---
 
 ## 9. Deploy TEI + EmbeddingGemma **[TRIAL-FIX]**
+
+> **What this step is doing:** Creating a Deployment + Service pair. The Deployment says *"run 1 replica of the TEI container, give it the HF_TOKEN secret as an env var, request 2 CPU / 4 GiB memory"*. The Service exposes that pod on a stable DNS name (`tei-service.default.svc.cluster.local`) port 80. When the pod boots, TEI reads `MODEL_ID=google/embeddinggemma-300m`, downloads the model weights from HuggingFace (using HF_TOKEN for auth), loads into RAM, starts HTTP server. After `kubectl wait --for=condition=Available`, the pod is ready to serve embeddings.
 
 **Codelab defaults that fail on trial nodes:**
 
@@ -297,6 +464,11 @@ First reconcile pulls a ~2 GB image + downloads EmbeddingGemma weights from HF. 
 
 ## 10. Register the model in AlloyDB **[OPERATOR-DRIFT]**
 
+> **What this step is doing:** Three related actions inside Postgres:
+> 1. **`CREATE EXTENSION google_ml_integration`** — loads the AlloyDB Omni extension that adds the `google_ml.*` schema (functions + model metadata tables) to Postgres.
+> 2. **`ALTER SYSTEM SET ... = 'on'` + `pg_reload_conf()`** — turns on the feature flag that permits outbound HTTP calls from SQL.
+> 3. **`CALL google_ml.create_model(...)`** — stores metadata about TEI in `google_ml.model_info_view`: the URL, the response-shape transforms, a nickname (`embedding-gemma`). Does *not* test the endpoint — just stores the config. The first real HTTP call happens when you later run `google_ml.embedding(...)`.
+
 This teaches the database that `google_ml.embedding('embedding-gemma', 'text')` should be an HTTP POST to the TEI service.
 
 > **Operator version matters.** AlloyDB Omni operator `1.6.3` (what we run) removed the `tei_text_embedding_*_transform` helpers that older codelab versions referenced. It also made `google_ml.create_model` a **procedure** (`CALL`, not `SELECT`). Working pattern for 1.6.x: use TEI's **OpenAI-compatible endpoint** (`/v1/embeddings`) with `model_provider => 'custom'` and the built-in `openai_text_embedding_*_transform` functions — since TEI's OpenAI-compat response shape matches OpenAI exactly.
@@ -359,6 +531,13 @@ CALL google_ml.drop_model('embedding-gemma');
 
 ## 11. Load the Cymbal schema + data
 
+> **What this step is doing:** Three phases because the `database` container is a minimal Postgres image (no `gcloud` SDK):
+> 1. **Download** the schema SQL + 3 CSV files from a public GCS bucket to Cloud Shell's filesystem (where `gcloud` is available)
+> 2. **`kubectl cp`** those files into the pod's `/tmp` (kubernetes' equivalent of `scp` for pods)
+> 3. **Run psql inside the pod** — creates pgvector extension, loads the schema file (which creates 4 tables: `cymbal_products`, `cymbal_embedding`, `cymbal_inventory`, `cymbal_stores`), and `\copy`s 941 products + inventory + store rows from the CSVs into those tables.
+>
+> After this: tables exist and have data, but the `embedding` column of `cymbal_embedding` is empty. Step 12 fills it.
+
 All four files (one schema + three CSVs) live in a public GCS bucket. The `database` container inside the AlloyDB pod has `psql` but **no `gcloud`** — so we download on Cloud Shell, copy into the pod with `kubectl cp`, then `\copy` from psql.
 
 ```bash
@@ -410,6 +589,10 @@ Expect 941 products.
 
 ## 12. Generate embeddings (the slow step)
 
+> **What this step is doing:** One SQL statement — `INSERT INTO cymbal_embedding SELECT ... google_ml.embedding(...) FROM cymbal_products` — iterates all 941 product descriptions, makes 941 serial HTTP calls to TEI, gets 941 768-dim vectors back, inserts each into the `cymbal_embedding` table. Under the hood: for each row, AlloyDB's HTTP client hits `tei-service.default.svc.cluster.local/v1/embeddings`, TEI's Rust server runs EmbeddingGemma inference on CPU (~0.4–5 sec per row depending on description length), returns the float array, Postgres casts to `vector(768)` and inserts.
+>
+> This is the **"pre-compute at write-time"** pattern — do the expensive work once at load time so query-time is just `SELECT embedding WHERE ...`, which is instant. Production systems embed on insert/update via triggers or async workers. Re-embedding only needed when the model itself changes.
+
 One `INSERT ... SELECT` that calls the model once per row, serially. CPU-only inference on `e2-standard-4` takes **~15–25 minutes for 941 rows** (measured live: ~1.3 sec per embedding, variance 0.4–5 sec depending on product-description length). You cannot speed this up without GPU nodes or parallel embedding (neither is in scope here).
 
 Older versions of this handbook said "~8 min" — that figure is unreliable on trial-account CPU nodes. If you're under a 45-min session budget, expect the INSERT to continue past the session end for students running hands-on. The **shadow-demo pattern** solves this: speaker shows a pre-embedded cluster for the hero query, students' `INSERT` keeps running in the background and they see their own results later.
@@ -447,6 +630,14 @@ Real output from 23 Apr:
 ---
 
 ## 13. Hero query — real output
+
+> **What this step is doing:** The whole workshop in one SQL query. Step-by-step what happens when you execute it:
+> 1. Postgres parses + plans the query. During planning, it evaluates the *constant* expression `google_ml.embedding('embedding-gemma', 'What kind...')::vector`. That means right now, Postgres makes an HTTP call to TEI to embed the query string. That HTTP call takes ~20 sec — all of the wall-clock time of this query.
+> 2. The resulting 768-dim vector is treated as a constant for the rest of the query.
+> 3. Execution: JOIN `cymbal_products` with `cymbal_embedding` (both by `uniq_id`), JOIN `cymbal_inventory` (same key), JOIN `cymbal_stores` (by `store_id`). Filter to `store_id=1583 AND inventory>0`. Compute `ce.embedding <=> constant_vec` (cosine distance) for each surviving row. Sort ascending. Take top 5.
+> 4. Return the 5 rows — in our case, Cherry Tree / California Lilac / Toyon / Rose Bush / California Peppertree, all at ZIP 93230.
+>
+> Total time ~20 seconds. Breakdown: 99.96% is step 1 (embedding the query text), 0.04% is the actual database work. See step 15 for the EXPLAIN ANALYZE proof.
 
 **Query:** *"What kind of fruit trees grow well here?"* filtered to `store_id=1583, inventory>0`.
 
@@ -489,6 +680,8 @@ Time: 20,487 ms
 
 ## 14. Bonus: semantic generality
 
+> **What this step is doing:** Same query pattern, different natural-language input ("something cheap for my patio"). Tests whether the model understood *intent*, not just keyword overlap. Product names returned (Garden Rake, Wheelbarrow, Watering Can, Garden Trowel, Hat) do NOT contain "cheap" or "patio" anywhere — but the model placed them near that query in embedding space because it learned from training data that outdoor/affordable items semantically cluster with those concepts. Proof that the system generalizes, not memorizes.
+
 Different query, no store filter, proves the result wasn't cherry-picked:
 
 ```sql
@@ -518,6 +711,12 @@ None of these product names contain "cheap" or "patio". The model understood **i
 ---
 
 ## 15. EXPLAIN ANALYZE — where the time goes
+
+> **What this step is doing:** `EXPLAIN ANALYZE` is Postgres's profiler. Prefixing any query with it makes Postgres (a) *actually execute* the query, (b) print a tree of what operations it did + how long each took. Two numbers matter:
+> - **Planning Time** — time spent in the planner phase. *Normally* microseconds. Here it's 20+ seconds, because planning is where `google_ml.embedding(constant_text)` gets evaluated (it's marked IMMUTABLE, so the planner pre-computes it). That pre-computation IS the HTTP call to TEI.
+> - **Execution Time** — time actually scanning + joining + sorting. Here it's 6–9 ms total for everything: 3-way join across 4 tables, cosine distance on 830+ rows, top-5 sort.
+>
+> The 99.96%/0.04% split is the core production lesson of this whole workshop. Your "slow query" is slow because of ML inference, not because of the database.
 
 Run the hero query prefixed with `EXPLAIN ANALYZE`. The real plan looks like this:
 
